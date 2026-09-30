@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Thin launcher: runs the TypeScript sources directly on Node 24 (native type stripping, no build).
+set -euo pipefail
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+APP="$(cd "$(dirname "$SELF")/.." && pwd)"
+REPO="$(cd "$APP/../.." && pwd)"
+
+# Prefer the Node pinned in .nvmrc: the default `node` on this Mac may be older.
+NODE="${JARVIS_NODE:-}"
+if [ -z "$NODE" ]; then
+  PINNED="$HOME/.nvm/versions/node/v$(cat "$REPO/.nvmrc" 2>/dev/null)/bin/node"
+  if [ -x "$PINNED" ]; then NODE="$PINNED"; else NODE="node"; fi
+fi
+exec "$NODE" "$APP/src/cli.ts" "$@"

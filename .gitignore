@@ -1,0 +1,16 @@
+node_modules/
+coverage/
+.DS_Store
+
+# Runtime data never belongs in git
+*.db
+*.db-*
+*.jsonl
+outbox/
+.jarvis-dev/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key

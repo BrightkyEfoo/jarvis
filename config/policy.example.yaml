@@ -1,0 +1,80 @@
+# Jarvis — policy
+#
+# Copy this file, edit it, then seal it (the sealed copy is root-owned and read-only for Jarvis):
+#   ops/scripts/seal-policy.sh config/policy.example.yaml   (run as yourself; it asks sudo for the copy)
+#
+# N4 (forbidden) rules live in the code (packages/policy) and cannot be relaxed from here:
+# rm, sudo, passwd, dscl, fdesetup, csrutil, security, force-push to main, pipes into
+# interpreters, credential folders (~/.ssh, ~/.aws, Keychains…), .env / *.pem files, etc.
+# This file can only ADD restrictions to those, and grant levels N0–N3.
+version: 1
+
+filesystem:
+  # Everything outside these folders is invisible to Jarvis.
+  read_roots:
+    - ~/jarvis-work
+    - ~/Desktop/jarvis
+  write_roots:
+    - ~/jarvis-work
+  # Extra protected paths, on top of the built-in list.
+  deny: []
+
+shell:
+  timeout_sec: 120
+  max_output_bytes: 1000000
+  # Anything not listed here is N3 (confirmation + PIN).
+  allow:
+    - { cmd: ls, level: 0 }
+    - { cmd: pwd, level: 0 }
+    - { cmd: cat, level: 0 }
+    - { cmd: head, level: 0 }
+    - { cmd: tail, level: 0 }
+    - { cmd: wc, level: 0 }
+    - { cmd: grep, level: 0 }
+    - { cmd: rg, level: 0 }
+    - { cmd: echo, level: 0 }
+    - { cmd: date, level: 0 }
+    - { cmd: sleep, level: 0 }
+    - { cmd: yes, level: 0 }
+    - { cmd: which, level: 0 }
+    - { cmd: git, sub: [status, diff, log, show, branch, rev-parse, remote, blame, ls-files], level: 0 }
+    - { cmd: git, sub: [add, commit, switch, checkout, stash, fetch, pull, worktree, merge, rebase], level: 1 }
+    - { cmd: git, sub: [push], level: 2, reason: publishes commits }
+    - { cmd: pnpm, sub: [test, lint, typecheck, build, install, run], level: 1 }
+    - { cmd: mkdir, level: 1 }
+    - { cmd: touch, level: 1 }
+    - { cmd: cp, level: 1 }
+    - { cmd: mv, level: 1 }
+    - { cmd: open, level: 1, reason: opens an app or a file }
+    - { cmd: code, level: 1, reason: opens VS Code }
+  # Extra N4 rules, e.g. { cmd: npm, sub: [publish], reason: never publish packages }
+  deny:
+    - { cmd: npm, sub: [publish], reason: never publish packages }
+    - { cmd: pnpm, sub: [publish], reason: never publish packages }
+
+# N2 actions approved without asking — only in a clean session (no external content read).
+# Example: - { tool: outbox_send, when: { to: [brightky@example.com] } }
+auto_approve: []
+
+approvals:
+  timeout_sec: 120
+
+pin:
+  max_attempts: 3
+  lockout_min: 15
+
+# Subscription quota guard (Max plan). Paid overage always stops Jarvis.
+quota:
+  reserve_interactive_pct: 30
+  night_max_utilization: 70
+
+models:
+  conversation: claude-sonnet-5-5
+  planning: claude-opus-5-5
+  # Reasoning effort for the conversation model (latency vs depth): low | medium | high | xhigh | max
+  effort: medium
+
+limits:
+  max_turns: 25
+  # Runaway-loop guard (client-side estimate), not billing.
+  max_budget_usd_per_query: 3

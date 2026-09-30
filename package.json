@@ -1,0 +1,28 @@
+{
+  "name": "jarvis",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24.12"
+  },
+  "scripts": {
+    "preinstall": "node ops/scripts/check-env.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run --project unit",
+    "perf": "vitest run --project perf",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm perf",
+    "jarvis": "node apps/jarvisd/src/cli.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@jarvis/audit": "workspace:*",
+    "@jarvis/policy": "workspace:*",
+    "@jarvis/secrets": "workspace:*",
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

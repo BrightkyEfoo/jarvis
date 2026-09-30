@@ -1,0 +1,16 @@
+{
+  "name": "@jarvis/policy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "sh-syntax": "0.7.0",
+    "tree-sitter": "0.25.1",
+    "tree-sitter-bash": "0.25.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  }
+}
