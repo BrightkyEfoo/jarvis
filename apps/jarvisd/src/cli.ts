@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { connect, type Socket } from 'node:net';
 import { createInterface } from 'node:readline/promises';
+import { k, type TurnView, turnFooter } from './format.ts';
 import { type ApprovalView, onLines, type Reply, type Request, writeLine } from './ipc.ts';
 import { appPaths } from './paths.ts';
 
@@ -158,19 +159,80 @@ async function ask(text: string): Promise<void> {
   process.stdout.write('\n');
   if (r.type === 'error') console.error(red(r.error));
   else if (r.type === 'done') {
-    const d = r.data as
-      | { ok: boolean; error?: string; ttftMs?: number; costUsd?: number }
-      | undefined;
+    const d = r.data as TurnView | undefined;
     if (d && !d.ok) console.error(red(`✖ ${d.error ?? 'failed'}`));
-    const meta = [
-      d?.ttftMs !== undefined ? `TTFT ${d.ttftMs} ms` : null,
-      d?.costUsd !== undefined
-        ? `≈ $${d.costUsd.toFixed(4)} (estimation, couvert par l'abonnement)`
-        : null,
-    ];
-    if (meta.some(Boolean)) console.log(dim(meta.filter(Boolean).join(' · ')));
+    if (d) {
+      const footer = turnFooter(d);
+      if (footer) console.log(dim(footer));
+    }
   }
   c.close();
+}
+
+function printCosts(data: unknown): void {
+  const s = data as {
+    since: string;
+    turns: number;
+    costUsd: number;
+    avgTtftMs: number | null;
+    byModel: Record<
+      string,
+      {
+        turns: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        costUsd: number;
+      }
+    >;
+    quota: Record<string, number | string>;
+  };
+  console.log(
+    bold(`Depuis le ${new Date(s.since).toLocaleDateString('fr-FR')} : ${s.turns} requête(s)`),
+  );
+  for (const [model, m] of Object.entries(s.byModel)) {
+    console.log(
+      `  ${model.padEnd(20)} ${String(m.turns).padStart(4)} req · ${k(m.inputTokens + m.cacheReadTokens).padStart(7)} in (${k(m.cacheReadTokens)} cache) · ${k(m.outputTokens).padStart(6)} out · ≈ $${m.costUsd.toFixed(3)}`,
+    );
+  }
+  console.log(
+    `  total ≈ $${s.costUsd.toFixed(3)} équivalent API — ${bold('0 € réellement facturé')} (abonnement)`,
+  );
+  if (s.avgTtftMs !== null) console.log(dim(`  TTFT moyen ${s.avgTtftMs} ms`));
+  const q = Object.entries(s.quota);
+  if (q.length > 0)
+    console.log(
+      dim(
+        `  quota : ${q.map(([w, v]) => `${w} ${typeof v === 'number' ? `${v} %` : v}`).join(' · ')}`,
+      ),
+    );
+}
+
+async function memoryCommand(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  type FactView = { id: number; kind: string; text: string; source: string };
+  const print = (data: unknown) => {
+    const facts = data as FactView[];
+    if (facts.length === 0) console.log(dim('(rien)'));
+    for (const f of facts)
+      console.log(
+        `#${String(f.id).padEnd(4)} ${f.kind.padEnd(10)} ${f.source === 'external' ? yellow('[externe] ') : ''}${f.text}`,
+      );
+  };
+  if (sub === 'search') return simple({ cmd: 'memory_search', query: rest.join(' ') }, print);
+  if (sub === 'forget')
+    return simple({ cmd: 'memory_forget', factId: Number(rest[0]) }, () =>
+      console.log('✔ oublié (archivé)'),
+    );
+  if (sub === 'notes') {
+    return simple({ cmd: 'status' }, async (d) => {
+      const dir = (d as { memoryNotes: string }).memoryNotes;
+      console.log(`Notes de mémoire : ${dir}`);
+      const { execFile } = await import('node:child_process');
+      execFile('/usr/bin/open', [dir]);
+    });
+  }
+  return simple({ cmd: 'memory_list', limit: Number(rest[0] ?? 50) }, print);
 }
 
 async function simple(req: Outgoing, print: (data: unknown) => void): Promise<void> {
@@ -205,6 +267,8 @@ const HELP = `jarvis — assistant de Brightky
   jarvis new                   nouvelle conversation (efface le contexte)
   jarvis approvals [--watch]   demandes de validation en attente
   jarvis approve|deny <id>     valider / refuser
+  jarvis costs [today|week|month]  consommation (équivalent API) et quota de l'abonnement
+  jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
   jarvis audit tail [n]        dernières entrées du journal
   jarvis audit verify          vérifier la chaîne de hash du journal
   jarvis daemon [--dev]        lancer le daemon (--dev : policy non scellée, N3 désactivé)
@@ -375,6 +439,13 @@ async function main(argv: string[]): Promise<void> {
           );
         }
       });
+    case 'costs':
+      return simple(
+        { cmd: 'costs', period: (rest[0] as 'today' | 'week' | 'month' | undefined) ?? 'today' },
+        printCosts,
+      );
+    case 'memory':
+      return memoryCommand(rest);
     case 'auth':
     case 'pin':
     case 'policy':

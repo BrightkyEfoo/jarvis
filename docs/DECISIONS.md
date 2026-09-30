@@ -203,3 +203,78 @@ destinée à Brightky en français.
   négligeable devant un `spawn`. Les deux parseurs doivent accepter la commande.
 
 **Mesuré.** `evaluate` (parse + classify + engine) : **p99 339 µs**.
+
+## ADR-014 — Bilingue français / anglais (remplace l'ADR-012 pour la conversation)
+
+**Contexte.** Brightky veut parler à Jarvis en français **et** en anglais (§9.10).
+
+**Décision.**
+- Jarvis répond dans la langue du dernier message ; si Brightky mélange, c'est la langue dominante
+  qui compte. La règle est dans le prompt système.
+- Le routeur de modèles reconnaît les intentions dans les deux langues.
+- Voix (S3) : Parakeet v3 détecte la langue automatiquement, et Pocket TTS dispose de voix
+  françaises et anglaises. La voix de sortie suivra la langue de la réponse.
+- Le code reste en anglais. Les messages de la CLI restent en français ; leur traduction n'a pas
+  été demandée.
+
+## ADR-015 — Mémoire v1 : deux niveaux de confiance
+
+**Décision.**
+- **Notes Markdown** dans `~/Jarvis/memory/*.md`, écrites par Brightky. Elles sont fiables, lues
+  au début de chaque session, et **jamais écrites par Jarvis**. Les outils fichiers génériques n'y
+  ont pas accès (le dossier est ajouté à la denylist au démarrage).
+- **Faits en SQLite** (FTS5, sans accents), écrits via `memory_remember`. Chaque fait porte sa
+  provenance : `jarvis` en session propre, `external` si la session est teintée. Dans ce second
+  cas, l'écriture passe en N2.
+- **Les faits `external` n'entrent jamais dans le prompt système.** Ils ne sont accessibles que
+  par `memory_search`, encadrés en `<external_data>`, et ils re-teintent la session. Une injection
+  ne peut donc pas devenir permanente.
+- Le snapshot de mémoire est placé après `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` : le préfixe statique
+  reste cacheable d'une session à l'autre.
+- Oublier un fait l'archive (suppression douce).
+
+**Mesuré.** Pour 500 faits, recherche p99 **345 µs** et snapshot p99 278 µs. Au départ, la
+recherche prenait 884 µs parce que la requête était re-préparée à chaque appel ; les statements
+sont désormais préparés une seule fois.
+
+## ADR-016 — Routeur de modèles local, sans Haiku
+
+**Décision.**
+- Le routage est **local et instantané**, sans appel au modèle, à partir d'expressions françaises
+  et anglaises : Sonnet 5.5 par défaut, Opus 5.5 pour planifier, concevoir, comparer ou réfléchir
+  en profondeur.
+- L'utilisateur peut forcer le choix : « opus » pour Opus ; « vite », « rapide » ou « quick » pour
+  Sonnet.
+- Si le quota Opus hebdomadaire est à 90 % ou plus, ou épuisé, la demande part sur Sonnet et la
+  raison est affichée.
+- La bascule se fait par `setModel()` sur la session chaude. **Un échec de bascule n'est pas
+  fatal** : le tour continue sur le modèle courant et l'échec est journalisé. Ce cas a été trouvé
+  avec le vrai SDK.
+- Changer de modèle invalide le cache de prompt (propre à chaque modèle). C'est accepté, car les
+  demandes de planification sont rares.
+
+## ADR-017 — Outils macOS et compteur de coûts
+
+**Décision.**
+- **Outils** :
+  - `projects_list` et `app_open` couvrent « ouvre VS Code sur le projet X ». Les projets viennent
+    de `projects.roots` et `projects.paths`, qui doivent être dans les `read_roots`.
+  - Apps autorisées : N1. Autres apps : N2. **Apps qui exécutent des documents** (Terminal, iTerm,
+    Script Editor, Automator, Installer, Réglages…) : N3 seules, N4 avec un document.
+  - `url_open` : http(s) seulement, en N1. Tout autre schéma est N4. Un lien trouvé dans du
+    contenu externe passe en N2 (risque d'exfiltration par la query string).
+  - `shortcut_run` : niveau fixé par la politique, N3 si le raccourci n'y figure pas. **Tout
+    raccourci dont le nom évoque de l'argent** (money, paiement, virement, banque, momo…) est **N4
+    codé en dur** : paiements hors périmètre.
+  - `apps_running` (JXA/NSWorkspace, sans permission TCC, environ 140 ms), `shortcuts_list` et
+    `system_status` (batterie ou secteur, uptime, disque) : N0.
+  - Les effets de bord passent par l'interface `MacOps`, injectée : les tests ne lancent jamais
+    d'application.
+- **Coûts** :
+  - Le SDK rapporte des totaux **cumulés** sur une session longue ; le coût d'un tour est la
+    différence avec le tour précédent. Le code du S0 affichait donc un coût faux dès le deuxième
+    tour ; c'est corrigé.
+  - Chaque tour est enregistré (modèle, route, tokens, tokens en cache, coût équivalent API, TTFT).
+  - La CLI affiche un pied de page à chaque requête, `jarvis costs [today|week|month]` donne les
+    agrégats, et le quota de l'abonnement s'affiche par fenêtre.
+  - Coût réellement facturé : 0 €, puisque tout passe par l'abonnement.

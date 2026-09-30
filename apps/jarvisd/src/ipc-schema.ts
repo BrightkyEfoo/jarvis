@@ -28,6 +28,18 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
     })
     .strict(),
   z.object({ id, cmd: z.literal('audit_verify') }).strict(),
+  z
+    .object({ id, cmd: z.literal('costs'), period: z.enum(['today', 'week', 'month']).optional() })
+    .strict(),
+  z
+    .object({
+      id,
+      cmd: z.literal('memory_list'),
+      limit: z.number().int().min(1).max(500).optional(),
+    })
+    .strict(),
+  z.object({ id, cmd: z.literal('memory_search'), query: z.string().min(1).max(300) }).strict(),
+  z.object({ id, cmd: z.literal('memory_forget'), factId: z.number().int().positive() }).strict(),
 ]);
 
 export type Request = z.infer<typeof RequestSchema>;

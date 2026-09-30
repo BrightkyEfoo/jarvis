@@ -4,8 +4,9 @@ Assistant vocal et orchestrateur de développement pour macOS : une journée de 
 parler, pas à taper. Brightky décide, valide et relit ; Jarvis exécute, dans les limites que le
 code lui impose.
 
-**État : Sprint 0 (fondations et sécurité).** Le moteur de permissions, l'audit, le kill switch,
-les secrets et la CLI texte sont en place. La voix arrive au Sprint 3.
+**État : Sprint 2.** En place : le moteur de permissions, l'audit, le kill switch, les secrets,
+les outils macOS, la mémoire, le routeur Sonnet/Opus, le compteur de coûts et la CLI texte
+bilingue FR/EN. La voix arrive au Sprint 3.
 
 ## Ce qui est garanti par le code
 - Niveaux **N0 à N4**. Les actions interdites (N4) sont bloquées dans le code et ne peuvent pas être
@@ -48,7 +49,10 @@ jarvis daemon                  # policy scellée (production)
 jarvis daemon --dev            # policy du repo non scellée ; N3 désactivé
 
 jarvis "quelle heure est-il ?"
-jarvis "liste les fichiers de mon workspace"
+jarvis "ouvre VS Code sur le projet CodeVault"
+jarvis "plan the next sprint"   # Opus pour la planification, Sonnet sinon ; FR ou EN
+jarvis costs week              # consommation (équivalent API) et quota de l'abonnement
+jarvis memory                  # ce que Jarvis retient · `jarvis memory notes` pour tes notes
 jarvis stop                    # STOP : tout s'arrête
 jarvis resume                  # reprendre (PIN)
 jarvis approvals --watch       # valider depuis un autre terminal
@@ -70,6 +74,7 @@ Arborescence :
 - `packages/policy` : permissions, gate, shell ;
 - `packages/audit` : journal ;
 - `packages/secrets` : Trousseau et rédaction ;
+- `packages/memory` : mémoire (notes Markdown, faits FTS5, usage) ;
 - `config/` : policy d'exemple ;
 - `ops/scripts/` : scellement ;
 - `tests/{e2e,redteam,perf}`.

@@ -169,6 +169,17 @@ describe('loadPolicy', () => {
     expect(() => loadPolicy({ path: p, expectedSha256: null, requireSealed: false })).toThrow();
   });
 
+  it('refuses project folders outside the readable roots', () => {
+    const p = join(tmp, 'projects.yaml');
+    writeFileSync(
+      p,
+      'version: 1\nfilesystem:\n  read_roots: [~/work]\nprojects:\n  roots: [~/Documents]\n',
+    );
+    expect(() => loadPolicy({ path: p, expectedSha256: null, requireSealed: false })).toThrow(
+      /outside filesystem.read_roots/,
+    );
+  });
+
   it('refuses YAML aliases (billion laughs)', () => {
     const p = join(tmp, 'alias.yaml');
     writeFileSync(p, 'version: 1\nfilesystem:\n  read_roots: &r [a]\n  write_roots: *r\n');

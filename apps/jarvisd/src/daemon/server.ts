@@ -116,6 +116,8 @@ async function handle(
         session: s ? { id: s.id.slice(0, 8), tainted: s.tainted } : null,
         pendingApprovals: rt.approvals.pending().length,
         quotaWarning: rt.quotaWarning,
+        quota: quotaView(rt),
+        memoryNotes: rt.memory.notesDir,
         tools: rt.gate.tools.map((t) => t.name),
       });
     }
@@ -133,7 +135,7 @@ async function handle(
           },
           'cli',
         );
-        return done(r);
+        return done({ ...r, quota: quotaView(rt) });
       } finally {
         off();
       }
@@ -191,5 +193,31 @@ async function handle(
 
     case 'audit_verify':
       return done(rt.audit.verify());
+
+    case 'costs': {
+      const since = new Date();
+      since.setHours(0, 0, 0, 0);
+      if (req.period === 'week') since.setDate(since.getDate() - 6);
+      if (req.period === 'month') since.setDate(1);
+      return done({ ...rt.memory.usageSummary(since), quota: quotaView(rt) });
+    }
+
+    case 'memory_list':
+      return done(rt.memory.list(req.limit ?? 50));
+
+    case 'memory_search':
+      return done(rt.memory.search(req.query, 20));
+
+    case 'memory_forget':
+      return rt.memory.forget(req.factId) ? done() : fail(`no active memory #${req.factId}`);
   }
+}
+
+/** Utilisation per subscription window, in percent, for the CLI footer and `jarvis costs`. */
+function quotaView(rt: Runtime): Record<string, number | string> {
+  const out: Record<string, number | string> = {};
+  for (const [window, info] of rt.quota) {
+    out[window] = info.utilization !== undefined ? Math.round(info.utilization * 100) : info.status;
+  }
+  return out;
 }

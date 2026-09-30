@@ -18,15 +18,40 @@ import { startServer } from '../../apps/jarvisd/src/daemon/server.ts';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
 import type { Request } from '../../apps/jarvisd/src/ipc-schema.ts';
 import { appPaths } from '../../apps/jarvisd/src/paths.ts';
+import type { MacOps } from '../../apps/jarvisd/src/tools/macos.ts';
 import { ScriptedBrain } from './scripted-brain.ts';
 
 export const EXAMPLE_POLICY = resolve(import.meta.dirname, '../../config/policy.example.yaml');
 export const PIN = '482915';
 export const CANARY_TOKEN = 'sk-ant-oat01-CANARYcanaryCANARY0123456789';
 
+/** Records macOS side effects instead of launching apps. */
+export class FakeMac implements MacOps {
+  readonly opened: string[][] = [];
+  readonly shortcutRuns: { name: string; input: string | null }[] = [];
+
+  async open(args: string[]): Promise<void> {
+    this.opened.push(args);
+  }
+  async runningApps(): Promise<string[]> {
+    return ['Finder', 'Code'];
+  }
+  async shortcuts(): Promise<string[]> {
+    return ['Convert video to GIF', 'Orange Money 🔒'];
+  }
+  async runShortcut(name: string, inputPath: string | null): Promise<string> {
+    this.shortcutRuns.push({ name, input: inputPath ? readFileSync(inputPath, 'utf8') : null });
+    return 'done';
+  }
+  async status(): Promise<string> {
+    return 'Now drawing from AC Power\nuptime: 5 h';
+  }
+}
+
 export interface Harness {
   home: string;
   work: string;
+  mac: FakeMac;
   rt: Runtime;
   server: Server;
   socket: string;
@@ -66,6 +91,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
   secrets.set(SecretName.policySha256, sha256(readFileSync(EXAMPLE_POLICY)));
 
   const paths = appPaths(join(base, 'j'));
+  const mac = new FakeMac();
   const rt = createRuntime({
     paths,
     home,
@@ -74,6 +100,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
     devMode: opts.devMode ?? false,
     requireSealed: false,
     brainFactory: (ctx) => new ScriptedBrain(ctx.gate),
+    mac,
   });
   const server = await startServer(rt, paths.socket);
 
@@ -128,6 +155,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
   return {
     home,
     work,
+    mac,
     rt,
     server,
     socket: paths.socket,

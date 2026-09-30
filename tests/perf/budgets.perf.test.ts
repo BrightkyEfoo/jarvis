@@ -73,6 +73,22 @@ describe('performance budgets', () => {
     ).toBe(N0);
   });
 
+  it('memory search p99 < 1 ms and session snapshot < 5 ms (500 facts)', async () => {
+    for (let i = 0; i < 500; i++)
+      h.rt.memory.remember(
+        'note',
+        `Projet numéro ${i} : client ${i % 37}, stack Next.js et Coolify`,
+        'jarvis',
+      );
+    const search = await measure(2000, () => h.rt.memory.search('client coolify', 10));
+    const snapshot = await measure(200, () => h.rt.memory.promptSnapshot(8000));
+    console.log(
+      `memory search p99: ${(search * 1000).toFixed(0)} µs, snapshot p99: ${(snapshot * 1000).toFixed(0)} µs`,
+    );
+    expect(search).toBeLessThan(1 * FACTOR);
+    expect(snapshot).toBeLessThan(5 * FACTOR);
+  });
+
   it('CLI ↔ daemon round trip p99 < 5 ms', async () => {
     const s = connect(h.socket);
     await new Promise<void>((r) => s.once('connect', () => r()));

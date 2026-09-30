@@ -172,6 +172,9 @@ importers:
       '@jarvis/audit':
         specifier: workspace:*
         version: link:packages/audit
+      '@jarvis/memory':
+        specifier: workspace:*
+        version: link:packages/memory
       '@jarvis/policy':
         specifier: workspace:*
         version: link:packages/policy
@@ -196,6 +199,9 @@ importers:
       '@jarvis/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@jarvis/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@jarvis/policy':
         specifier: workspace:*
         version: link:../../packages/policy
@@ -207,6 +213,16 @@ importers:
         version: 4.6.5
 
   packages/audit:
+    dependencies:
+      better-sqlite3:
+        specifier: 13.0.3
+        version: 13.0.3
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: 9.6.0
+        version: 9.6.0
+
+  packages/memory:
     dependencies:
       better-sqlite3:
         specifier: 13.0.3

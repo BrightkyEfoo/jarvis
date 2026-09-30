@@ -72,13 +72,23 @@ export function loadPolicy(opts: LoadPolicyOptions): Policy {
   const doc = parse(raw.toString('utf8'), { uniqueKeys: true, maxAliasCount: 0 });
   const parsed = PolicySchema.parse(doc);
   const fs = parsed.filesystem;
+  const expand = (paths: string[]) => paths.map((p) => expandHome(p, home));
+  const readRoots = expand(fs.read_roots);
+  const projects = { roots: expand(parsed.projects.roots), paths: expand(parsed.projects.paths) };
+  const readable = (p: string) => readRoots.some((r) => p === r || p.startsWith(`${r}/`));
+  for (const p of [...projects.roots, ...projects.paths]) {
+    if (!readable(p))
+      throw new PolicyIntegrityError(`projects entry ${p} is outside filesystem.read_roots`);
+  }
   const policy: Policy = {
     ...parsed,
     filesystem: {
-      read_roots: fs.read_roots.map((p) => expandHome(p, home)),
-      write_roots: fs.write_roots.map((p) => expandHome(p, home)),
-      deny: fs.deny.map((p) => expandHome(p, home)),
+      read_roots: readRoots,
+      write_roots: expand(fs.write_roots),
+      deny: expand(fs.deny),
     },
+    projects,
+    memory: { ...parsed.memory, notes_dir: expandHome(parsed.memory.notes_dir, home) },
     sha256: digest,
     path: opts.path,
     sealed: opts.requireSealed,

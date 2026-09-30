@@ -5,6 +5,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
   startup,
   tool,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -17,6 +18,8 @@ import type { AskHandlers, AskResult, Brain } from './brain.ts';
 import { preToolUseHook } from './hooks.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import type { RateLimitInfo } from './quota.ts';
+import { type QuotaState, type Route, routeModel } from './router.ts';
+import { type Totals, type TurnUsage, turnUsage } from './usage.ts';
 
 /** Every built-in Claude Code tool, removed by name as a second layer on top of `tools: []`. */
 const BUILTIN_TOOLS = [
@@ -77,6 +80,16 @@ interface Turn {
   text: string;
   /** API-level failure reported on an assistant message (auth, billing, overload…). */
   error: string | undefined;
+  route: Route;
+}
+
+export interface TurnRecord {
+  trigger: string;
+  route: Route;
+  usage: TurnUsage;
+  model: string;
+  ttftMs: number | null;
+  durationMs: number;
 }
 
 export interface ClaudeBrainDeps {
@@ -89,6 +102,10 @@ export interface ClaudeBrainDeps {
   cwd: string;
   oauthToken: string;
   onRateLimit: (info: RateLimitInfo) => void;
+  /** Memory snapshot for the system prompt, read at each session start. */
+  memorySnapshot: () => string;
+  quota: () => QuotaState;
+  onTurn: (t: TurnRecord) => void;
 }
 
 export class ClaudeBrain implements Brain {
@@ -101,9 +118,12 @@ export class ClaudeBrain implements Brain {
   #turn: Turn | null = null;
   #lock: Promise<unknown> = Promise.resolve();
   #surfaceLogged = false;
+  #model: string;
+  #totals: Totals | null = null;
 
   constructor(deps: ClaudeBrainDeps) {
     this.#d = deps;
+    this.#model = deps.policy.models.conversation;
   }
 
   get session(): Session {
@@ -131,7 +151,12 @@ export class ClaudeBrain implements Brain {
     return {
       model: d.policy.models.conversation,
       effort: d.policy.models.effort,
-      systemPrompt: SYSTEM_PROMPT,
+      // Static prefix (globally cacheable) | per-session memory snapshot.
+      systemPrompt: [
+        SYSTEM_PROMPT,
+        SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+        memoryBlock(d.memorySnapshot()),
+      ],
       cwd: d.cwd,
       env: sdkEnv({
         home: d.home,
@@ -193,6 +218,8 @@ export class ClaudeBrain implements Brain {
     }
     this.#q = q;
     this.#input = input;
+    this.#model = this.#d.policy.models.conversation;
+    this.#totals = null;
     void this.#pump(q);
   }
 
@@ -283,13 +310,40 @@ export class ClaudeBrain implements Brain {
             modelUsage: m.modelUsage,
           },
         });
+        // Totals are cumulative over the long-lived session: this turn is the difference.
+        const totals: Totals = { costUsd: m.total_cost_usd, byModel: m.modelUsage };
+        const usage = turnUsage(this.#totals, totals);
+        this.#totals = totals;
+        const route = this.#turn?.route ?? {
+          tier: 'conversation',
+          model: this.#model,
+          reason: 'default',
+        };
+        const model = usage.model ?? this.#model;
+        this.#d.onTurn({
+          trigger: this.#trigger,
+          route,
+          usage,
+          model,
+          ttftMs: ttftMs ?? null,
+          durationMs: m.duration_ms,
+        });
+
         // Locally generated messages (auth errors…) are not streamed: fall back to `result`.
         const streamed = this.#turn?.text ?? '';
         const result: AskResult = {
           ok,
           text: streamed || (m.subtype === 'success' ? m.result : ''),
           turns: m.num_turns,
-          costUsd: m.total_cost_usd,
+          costUsd: usage.costUsd,
+          model,
+          route: { tier: route.tier, reason: route.reason },
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+          },
         };
         if (ttftMs !== undefined) result.ttftMs = ttftMs;
         if (!ok) result.error = turnError ?? (m.subtype === 'success' ? 'error' : m.subtype);
@@ -313,10 +367,31 @@ export class ClaudeBrain implements Brain {
         return { ok: false, text: '', error: `STOP engaged: ${this.#d.killswitch.reason}` };
       await this.warm();
       const input = this.#input;
-      if (!input) return { ok: false, text: '', error: 'model not available' };
+      const q = this.#q;
+      if (!input || !q) return { ok: false, text: '', error: 'model not available' };
       this.#trigger = trigger;
+      let route = routeModel(prompt, this.#d.policy.models, this.#d.quota());
+      if (route.model !== this.#model) {
+        try {
+          await q.setModel(route.model);
+          this.#model = route.model;
+        } catch (e) {
+          // A failed switch (model unavailable, quota…) must not cost Brightky his answer.
+          const reason = (e as Error).message.slice(0, 200);
+          this.#d.audit.append({
+            event: 'system',
+            outcome: 'model_switch_failed',
+            data: { to: route.model, reason },
+          });
+          route = {
+            tier: 'conversation',
+            model: this.#model,
+            reason: `switch to ${route.model} failed: ${reason}`,
+          };
+        }
+      }
       return new Promise<AskResult>((resolve) => {
-        this.#turn = { handlers, resolve, text: '', error: undefined };
+        this.#turn = { handlers, resolve, text: '', error: undefined, route };
         input.push({
           type: 'user',
           message: { role: 'user', content: prompt },
@@ -353,4 +428,10 @@ export class ClaudeBrain implements Brain {
   async close(): Promise<void> {
     await this.stop('shutdown');
   }
+}
+
+function memoryBlock(snapshot: string): string {
+  return snapshot
+    ? `# Mémoire\nCe que Brightky t'a appris ou t'a demandé de retenir (fiable) :\n\n${snapshot}`
+    : '# Mémoire\n(vide)';
 }

@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { AuditLog } from '@jarvis/audit';
+import { Memory } from '@jarvis/memory';
 import {
   ApprovalBroker,
   FsPolicy,
@@ -14,15 +15,18 @@ import {
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import type { Brain } from '../orchestrator/brain.ts';
 import { ClaudeBrain } from '../orchestrator/claude.ts';
-import { quotaAction } from '../orchestrator/quota.ts';
+import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import type { AppPaths } from '../paths.ts';
 import { createTools } from '../tools/index.ts';
+import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
+import { createMemoryTools } from '../tools/memory.ts';
 
 export interface BrainContext {
   gate: Gate;
   killswitch: KillSwitch;
   audit: AuditLog;
   policy: Policy;
+  memory: Memory;
 }
 
 export interface RuntimeOptions {
@@ -36,6 +40,8 @@ export interface RuntimeOptions {
   requireSealed?: boolean;
   /** Tests inject a scripted brain; production builds ClaudeBrain. */
   brainFactory?: (ctx: BrainContext) => Brain;
+  /** Tests inject fake macOS side effects; production uses open/osascript/shortcuts. */
+  mac?: MacOps;
 }
 
 export interface Runtime {
@@ -45,6 +51,9 @@ export interface Runtime {
   approvals: ApprovalBroker;
   pin: PinGuard;
   gate: Gate;
+  memory: Memory;
+  /** Latest subscription window states (five_hour, seven_day, seven_day_opus…). */
+  quota: Map<string, RateLimitInfo>;
   /** Null when no subscription token is stored yet (`jarvis auth set-token`). */
   brain: Brain | null;
   devMode: boolean;
@@ -83,11 +92,13 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     verifyPin: (p) => pin.verify(p),
   });
 
+  const memory = new Memory({ dbPath: paths.memoryDb, notesDir: policy.memory.notes_dir });
   const fs = new FsPolicy({
     home: o.home,
     readRoots: policy.filesystem.read_roots,
     writeRoots: policy.filesystem.write_roots,
-    extraDeny: policy.filesystem.deny,
+    // Memory changes only through the memory tools, so its provenance stays recorded.
+    extraDeny: [...policy.filesystem.deny, policy.memory.notes_dir],
   });
   const cwd = policy.filesystem.write_roots[0] ?? o.home;
   mkdirSync(cwd, { recursive: true });
@@ -111,6 +122,15 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   })) {
     gate.register(t);
   }
+  for (const t of createMacTools({
+    fs,
+    policy,
+    mac: o.mac ?? realMacOps,
+    scratchDir: paths.scratch,
+  }))
+    gate.register(t);
+  for (const t of createMemoryTools(memory)) gate.register(t);
+  const quota = new Map<string, RateLimitInfo>();
 
   const rt: Runtime = {
     policy,
@@ -119,6 +139,8 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     approvals,
     pin,
     gate,
+    memory,
+    quota,
     brain: null,
     devMode: o.devMode,
     quotaWarning: null,
@@ -127,10 +149,11 @@ export function createRuntime(o: RuntimeOptions): Runtime {
       await rt.brain?.close();
       audit.append({ event: 'system', outcome: 'shutdown' });
       audit.close();
+      memory.close();
     },
   };
 
-  const ctx: BrainContext = { gate, killswitch, audit, policy };
+  const ctx: BrainContext = { gate, killswitch, audit, policy, memory };
   if (o.brainFactory) {
     rt.brain = o.brainFactory(ctx);
   } else if (oauthToken) {
@@ -140,7 +163,23 @@ export function createRuntime(o: RuntimeOptions): Runtime {
       home: o.home,
       cwd,
       oauthToken,
+      memorySnapshot: () => memory.promptSnapshot(policy.memory.prompt_max_chars),
+      quota: () => quota,
+      onTurn: (t) =>
+        memory.recordUsage({
+          model: t.model,
+          trigger: t.trigger,
+          route: t.route.tier,
+          inputTokens: t.usage.inputTokens,
+          outputTokens: t.usage.outputTokens,
+          cacheReadTokens: t.usage.cacheReadTokens,
+          cacheWriteTokens: t.usage.cacheWriteTokens,
+          costUsd: t.usage.costUsd,
+          ttftMs: t.ttftMs,
+          durationMs: t.durationMs,
+        }),
       onRateLimit: (info) => {
+        if (info.rateLimitType) quota.set(info.rateLimitType, info);
         const a = quotaAction(info);
         if (a.warn) rt.quotaWarning = a.warn;
         audit.append({

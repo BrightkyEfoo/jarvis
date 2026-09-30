@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.2.0 — Sprint 2 : outils macOS, mémoire, routeur, coûts (30/09/2026)
+
+### Ajouté
+- **Outils macOS** : `projects_list`, `app_open`, `url_open`, `apps_running`, `shortcuts_list`,
+  `shortcut_run` et `system_status`. La demande « ouvre VS Code sur le projet X » est couverte.
+- **`@jarvis/memory`** :
+  - notes Markdown de Brightky (`~/Jarvis/memory`) et faits SQLite FTS5 avec leur provenance ;
+  - outils `memory_search`, `memory_remember` et `memory_forget` ;
+  - snapshot dans le prompt système (faits externes exclus).
+- **Routeur de modèles** : Sonnet 5.5 par défaut, Opus 5.5 pour planifier ou réfléchir en
+  profondeur (FR et EN), repli sur Sonnet si le quota Opus est presque épuisé.
+- **Compteur de coûts** : usage par tour (modèle, tokens, cache, coût équivalent API, TTFT), pied
+  de page dans la CLI, `jarvis costs`, quota par fenêtre dans `jarvis status`.
+- **Langues** : Jarvis répond en français ou en anglais selon la langue utilisée.
+- **CLI** : `jarvis costs [today|week|month]` et `jarvis memory [list|search|forget|notes]`.
+- **Politique** : nouvelles sections `macos` (apps, raccourcis), `projects` et `memory`.
+- **Tests** : 270 tests unitaires, e2e et red team (7 cas d'injection), plus 5 budgets de perf.
+
+### Corrigé
+- Le coût par requête était cumulé sur toute la session (les totaux du SDK sont cumulatifs) : il
+  est maintenant calculé par différence.
+- Un échec de `setModel` interrompait la requête : désormais Jarvis reste sur le modèle courant.
+
+### Sécurité
+- Les faits issus de contenu externe ne sont jamais réinjectés dans le prompt système, ce qui
+  bloque l'empoisonnement de la mémoire.
+- Liens venant de contenu externe : N2. Schémas d'URL autres que http(s) : N4.
+- Raccourcis liés à des paiements : N4 codé en dur.
+
+### Mesuré (M1 Pro, machine au calme)
+| Mesure | Résultat | Budget |
+|---|---|---|
+| `evaluate` p99 | 250 µs | 1 ms |
+| Gate p99 | 729 µs | 2 ms |
+| Recherche mémoire p99 | 345 µs | 1 ms |
+| Snapshot de session | 278 µs | 5 ms |
+| Aller-retour IPC p99 | 31 µs | 5 ms |
+| Démarrage du daemon | 44 ms | 300 ms |
+
+Une mesure faite pendant un autre `pnpm test` (load average de 21) montait jusqu'à 3,5 ms : les
+budgets supposent une machine au calme.
+
 ## 0.1.0 — Sprint 0 : fondations et sécurité (30/09/2026)
 
 ### Ajouté

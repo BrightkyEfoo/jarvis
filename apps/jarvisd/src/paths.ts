@@ -6,6 +6,7 @@ export interface AppPaths {
   socket: string;
   auditDb: string;
   auditJsonl: string;
+  memoryDb: string;
   stopFlag: string;
   pinState: string;
   outbox: string;
@@ -23,6 +24,7 @@ export function appPaths(root = process.env.JARVIS_HOME ?? DEFAULT_ROOT): AppPat
     socket: join(root, 'run', 'jarvisd.sock'),
     auditDb: join(root, 'data', 'audit.db'),
     auditJsonl: join(root, 'data', 'audit.jsonl'),
+    memoryDb: join(root, 'data', 'memory.db'),
     stopFlag: join(root, 'state', 'STOP'),
     pinState: join(root, 'state', 'pin-lock.json'),
     outbox: join(root, 'outbox'),

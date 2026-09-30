@@ -11,9 +11,17 @@ export interface AskResult {
   text: string;
   error?: string;
   ttftMs?: number;
-  /** Client-side estimate reported by the SDK; the subscription is what is actually used. */
+  /** This turn only; client-side estimate at API prices — the subscription is what is used. */
   costUsd?: number;
   turns?: number;
+  model?: string;
+  route?: { tier: string; reason: string };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
 }
 
 /** The conversational core. Production: ClaudeBrain. Tests: a scripted brain driving the Gate. */

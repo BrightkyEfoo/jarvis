@@ -83,6 +83,37 @@ export const PolicySchema = z
       })
       .strict()
       .prefault({}),
+    macos: z
+      .object({
+        /** Apps Jarvis may open at N1. Others need a confirmation (N2). */
+        apps: z.array(z.string()).prefault([]),
+        /** Shortcuts with an explicit level. Unlisted shortcuts are N3. */
+        shortcuts: z
+          .array(z.object({ name: z.string(), level: z.number().int().min(0).max(3) }).strict())
+          .prefault([]),
+        /** Shortcuts that must never run (N4), on top of the built-in payment filter. */
+        shortcuts_deny: z.array(z.string()).prefault([]),
+      })
+      .strict()
+      .prefault({}),
+    projects: z
+      .object({
+        /** Folders whose sub-folders are projects. Must be inside filesystem.read_roots. */
+        roots: z.array(z.string()).prefault([]),
+        /** Individual project folders. Must be inside filesystem.read_roots. */
+        paths: z.array(z.string()).prefault([]),
+      })
+      .strict()
+      .prefault({}),
+    memory: z
+      .object({
+        /** Markdown notes written by Brightky; Jarvis reads them, never writes them. */
+        notes_dir: z.string().prefault('~/Jarvis/memory'),
+        /** Budget for the memory snapshot put in the system prompt. */
+        prompt_max_chars: z.number().int().min(0).max(50_000).prefault(8000),
+      })
+      .strict()
+      .prefault({}),
   })
   .strict();
 

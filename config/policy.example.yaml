@@ -78,3 +78,40 @@ limits:
   max_turns: 25
   # Runaway-loop guard (client-side estimate), not billing.
   max_budget_usd_per_query: 3
+
+macos:
+  # Apps opened without asking (N1). Any other app needs a confirmation (N2).
+  # Terminal, iTerm, Script Editor, Automator, Installer, System Settings… are handled in code:
+  # N3 alone, N4 with a document (they would execute it).
+  apps:
+    - Visual Studio Code
+    - Finder
+    - Safari
+    - Google Chrome
+    - Notes
+    - Calendar
+    - Music
+    - Spotify
+    - Slack
+    - WhatsApp
+    - Telegram
+    - Postman
+    - Figma
+  # Shortcuts with an explicit level; unlisted shortcuts are N3.
+  # Shortcuts whose name mentions money/payment/bank/transfer are always N4 (built-in).
+  # Example: - { name: "Convert video to GIF", level: 1 }
+  shortcuts: []
+  shortcuts_deny: []
+
+projects:
+  # Sub-folders of these are projects ("ouvre VS Code sur le projet X"). Must be in read_roots.
+  roots:
+    - ~/jarvis-work
+  # Individual project folders.
+  paths:
+    - ~/Desktop/jarvis
+
+memory:
+  # Brightky's Markdown notes: Jarvis reads them at each session start and never writes them.
+  notes_dir: ~/Jarvis/memory
+  prompt_max_chars: 8000

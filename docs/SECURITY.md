@@ -60,6 +60,20 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 - **Red team** : `tests/redteam/` joue un modèle *totalement* compromis. Critère : 0 action non
   autorisée. La suite passe à 25 cas et plus au S12.
 
+## Mémoire, liens et macOS (S2)
+
+- **Empoisonnement de la mémoire** :
+  - après du contenu externe, `memory_remember` passe en N2 et le fait est marqué `external` ;
+  - les faits `external` ne reviennent jamais dans le prompt système, seulement via
+    `memory_search`, encadrés, et ils re-teintent la session ;
+  - les notes Markdown de Brightky sont hors d'atteinte des outils fichiers.
+- **Exfiltration par lien** : `url_open` n'accepte que http(s). Un lien trouvé dans du contenu
+  externe passe en N2 et apparaît dans l'écran de validation.
+- **Apps qui exécutent** (Terminal, iTerm, Script Editor, Automator, Installer, Réglages…) : N3
+  seules, N4 avec un document.
+- **Raccourcis** : tout nom qui évoque de l'argent est N4 codé en dur. Un raccourci absent de la
+  politique est N3.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y
