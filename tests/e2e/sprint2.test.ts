@@ -183,3 +183,35 @@ describe('costs', () => {
     c.close();
   });
 });
+
+describe('voice turns (daemon side)', () => {
+  it('records the voice trigger in the audit log', async () => {
+    const c = await h.rpc();
+    await c.call({ cmd: 'ask', text: 'call system_time {}', trigger: 'voice' });
+    c.close();
+    expect(h.rt.audit.tail(5).find((r) => r.event === 'intent')).toMatchObject({
+      tool: 'system_time',
+      trigger: 'voice',
+    });
+  });
+
+  it('barge-in abandons the answer in progress without engaging STOP', async () => {
+    const asker = await h.rpc();
+    const t0 = performance.now();
+    const pending = asker.call({
+      cmd: 'ask',
+      text: 'say Bonjour Brightky.\nwait 5000\nsay jamais dit',
+      trigger: 'voice',
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const ctl = await h.rpc();
+    expect((await ctl.call({ cmd: 'interrupt' })).final.type).toBe('done');
+    const { final, events } = await pending;
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(text(events)).toBe('Bonjour Brightky.\n');
+    expect(final).toMatchObject({ type: 'done', data: { ok: false, error: 'interrupted' } });
+    expect(h.rt.killswitch.engaged).toBe(false);
+    asker.close();
+    ctl.close();
+  });
+});

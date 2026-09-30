@@ -278,3 +278,59 @@ sont désormais préparés une seule fois.
   - La CLI affiche un pied de page à chaque requête, `jarvis costs [today|week|month]` donne les
     agrégats, et le quota de l'abonnement s'affiche par fenêtre.
   - Coût réellement facturé : 0 €, puisque tout passe par l'abonnement.
+
+## ADR-018 — Voix native Apple, 0 Mo (remplace l'ADR-011 pour le S3)
+
+**Contexte.** La pile de l'ADR-011 (Pipecat, Parakeet, Pocket TTS…) demandait environ **2 Go de
+téléchargement**. Brightky n'a pas cette data aujourd'hui, et la consigne reste : zéro coût hors
+abonnement, performance maximale.
+
+**Décision.** Une app native Swift, `Jarvis Voice.app` (228 Ko, compilée sur la machine), qui
+n'utilise que ce que macOS fournit déjà :
+- **Reconnaissance** : `SFSpeechRecognizer` avec `requiresOnDeviceRecognition`. Aucun son ne
+  quitte le Mac, aucune data n'est consommée.
+  - Deux reconnaisseurs, `fr-FR` et `en-US`, écoutent le même audio en parallèle. La lecture
+    retenue combine la confiance du reconnaisseur et la probabilité de langue calculée par
+    NaturalLanguage.
+  - Le reconnaisseur de la mauvaise langue renvoie « No speech detected », ce qui donne une
+    détection de langue gratuite.
+- **Push-to-talk** : un hot key Carbon (⌥Espace, réglable) signale l'appui et le relâchement,
+  sans permission Accessibilité. La fin de tour est exacte, sans attente de VAD.
+  Le VAD et le wake word arrivent avec le mode mains libres (S11).
+- **Voix** : `AVSpeechSynthesizer` avec les voix installées. Thomas (FR) et Daniel (EN,
+  britannique) par défaut. Si une variante Améliorée ou Premium est téléchargée plus tard en
+  Wi-Fi, elle est choisie automatiquement.
+  - La réponse est lue **phrase par phrase pendant le streaming** ; le markdown, le code, les
+    liens et les emojis sont retirés.
+  - La langue de la voix suit chaque phrase.
+- **Barge-in** : réappuyer sur le raccourci coupe la voix et envoie `interrupt` au daemon. Cela
+  abandonne le tour en cours sans STOP ; un garde-fou réinitialise le process modèle au bout de
+  3 s.
+- **Style oral** : les tours vocaux sont préfixés `[voix]`. Le prompt système demande alors 1 à 3
+  phrases, sans markdown. Le préfixe est porté par le message, ce qui préserve le cache.
+- **Préchauffage** : les deux modèles locaux sont chargés au lancement. Le tout premier essai en
+  français avait échoué à froid.
+- **Identité** : l'app est lancée via LaunchServices (`jarvis voice`), donc les permissions Micro
+  et Reconnaissance vocale lui sont attribuées à elle, et ses logs reviennent dans le terminal.
+
+**Mesuré (autotest sur fichiers, M1 Pro).**
+
+| Mesure | Résultat |
+|---|---|
+| Reconnaissance EN | 242 ms, confiance 0,98 |
+| Reconnaissance FR | 872 ms pour un fichier entier |
+| Premier son de la voix | 45 à 49 ms |
+
+En direct, la reconnaissance se fait pendant que Brightky parle : au relâchement, il ne reste que
+la finalisation.
+
+**Chemin d'évolution.** Le moteur est interchangeable (`Listener` / `Speaker`). Parakeet v3 et
+Pocket TTS (ADR-011) pourront le remplacer quand la data le permettra, si la qualité française
+l'exige.
+
+**Limites connues.**
+- Les noms propres sont mal reconnus (« CodeVault » entendu « GO ») ; un vocabulaire
+  personnalisé (`contextualStrings`) peut corriger ça.
+- Les voix compactes restent un peu robotiques.
+- La signature est ad hoc : **chaque recompilation fait redemander les permissions**. Un
+  certificat local de signature stable est prévu avec le HUD (S8).

@@ -4,9 +4,10 @@ Assistant vocal et orchestrateur de développement pour macOS : une journée de 
 parler, pas à taper. Brightky décide, valide et relit ; Jarvis exécute, dans les limites que le
 code lui impose.
 
-**État : Sprint 2.** En place : le moteur de permissions, l'audit, le kill switch, les secrets,
-les outils macOS, la mémoire, le routeur Sonnet/Opus, le compteur de coûts et la CLI texte
-bilingue FR/EN. La voix arrive au Sprint 3.
+**État : Sprint 3.** En place : le moteur de permissions, l'audit, le kill switch, les secrets,
+les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. On peut parler à
+Jarvis en français ou en anglais, au clavier ou à la voix (push-to-talk, reconnaissance 100 %
+locale, 0 Mo à télécharger).
 
 ## Ce qui est garanti par le code
 - Niveaux **N0 à N4**. Les actions interdites (N4) sont bloquées dans le code et ne peuvent pas être
@@ -53,6 +54,8 @@ jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "plan the next sprint"   # Opus pour la planification, Sonnet sinon ; FR ou EN
 jarvis costs week              # consommation (équivalent API) et quota de l'abonnement
 jarvis memory                  # ce que Jarvis retient · `jarvis memory notes` pour tes notes
+jarvis voice                   # maintiens ⌥Espace et parle ; réappuie pour couper la parole
+jarvis voice selftest          # vérifie la reconnaissance FR/EN et la voix, sans micro
 jarvis stop                    # STOP : tout s'arrête
 jarvis resume                  # reprendre (PIN)
 jarvis approvals --watch       # valider depuis un autre terminal
@@ -71,6 +74,7 @@ pnpm perf      # budgets : evaluate < 1 ms, gate < 2 ms, IPC < 5 ms, démarrage 
 
 Arborescence :
 - `apps/jarvisd` : daemon, orchestrateur, outils, CLI ;
+- `apps/voice` : app vocale native Swift (push-to-talk) ;
 - `packages/policy` : permissions, gate, shell ;
 - `packages/audit` : journal ;
 - `packages/secrets` : Trousseau et rédaction ;

@@ -14,3 +14,4 @@ outbox/
 .env.*
 *.pem
 *.key
+apps/voice/build/

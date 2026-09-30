@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.0 — Sprint 3 : voix en push-to-talk, 100 % locale (01/10/2026)
+
+### Ajouté
+- **`apps/voice`** : app native Swift `Jarvis Voice` (228 Ko), sans aucun téléchargement.
+  - Maintenir ⌥Espace pour parler ; reconnaissance locale d'Apple en `fr-FR` et `en-US` en
+    parallèle, avec choix automatique de la langue.
+  - Réponse lue phrase par phrase pendant qu'elle s'écrit (Thomas / Daniel).
+  - Barge-in : réappuyer coupe la parole.
+  - Latence affichée à chaque tour (reconnaissance, premier texte, voix).
+- **`jarvis voice [build|test|selftest]`** : l'autotest reconnaît des phrases générées par `say`,
+  sans micro, et fait parler Jarvis.
+- **Daemon** :
+  - `ask` accepte `trigger: voice` (enregistré dans l'audit, style oral) ;
+  - nouvelle commande `interrupt` (barge-in, distincte de STOP) ;
+  - `Brain.interrupt()`.
+- **Tests** : 18 tests Swift (découpage en phrases, nettoyage, choix de langue) et 2 tests e2e
+  (déclencheur voix, barge-in en moins de 500 ms).
+
+### Mesuré
+| Mesure | Résultat |
+|---|---|
+| Premier son de la voix | 45 ms |
+| Reconnaissance EN (fichier) | 242 ms |
+| Reconnaissance FR (fichier entier) | 872 ms |
+
+### Notes
+- La pile Pipecat, Parakeet et Pocket TTS (environ 2 Go) est reportée faute de data ; voir l'ADR-018.
+- Les permissions Micro et Reconnaissance vocale sont attribuées à « Jarvis Voice » ; une
+  recompilation les fait redemander (signature ad hoc).
+
 ## 0.2.0 — Sprint 2 : outils macOS, mémoire, routeur, coûts (30/09/2026)
 
 ### Ajouté

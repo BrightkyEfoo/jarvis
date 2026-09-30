@@ -34,5 +34,7 @@ export interface Brain {
   stop(reason: string): Promise<void>;
   /** Fresh context: drops the conversation, and with it any taint from external content. */
   newSession(): Promise<void>;
+  /** Barge-in: abandon the answer in progress, keep the session and the model process. */
+  interrupt(): Promise<void>;
   close(): Promise<void>;
 }

@@ -6,7 +6,17 @@ const id = z.string().min(1).max(64);
 export const RequestSchema = z.discriminatedUnion('cmd', [
   z.object({ id, cmd: z.literal('ping') }).strict(),
   z.object({ id, cmd: z.literal('status') }).strict(),
-  z.object({ id, cmd: z.literal('ask'), text: z.string().min(1).max(20_000) }).strict(),
+  z
+    .object({
+      id,
+      cmd: z.literal('ask'),
+      text: z.string().min(1).max(20_000),
+      /** `voice` asks for short, spoken-style answers and is recorded as the trigger. */
+      trigger: z.enum(['cli', 'voice']).optional(),
+    })
+    .strict(),
+  /** Barge-in: abandon the current answer (not STOP: nothing is killed or locked). */
+  z.object({ id, cmd: z.literal('interrupt') }).strict(),
   z.object({ id, cmd: z.literal('stop'), reason: z.string().max(200).optional() }).strict(),
   z.object({ id, cmd: z.literal('resume'), pin: z.string().max(32) }).strict(),
   z.object({ id, cmd: z.literal('new_session') }).strict(),

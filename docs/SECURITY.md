@@ -74,6 +74,18 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 - **Raccourcis** : tout nom qui évoque de l'argent est N4 codé en dur. Un raccourci absent de la
   politique est N3.
 
+## Voix (S3)
+
+- **Reconnaissance** : strictement locale (`requiresOnDeviceRecognition`). Aucun audio n'est
+  envoyé à Apple ni ailleurs.
+- **Micro** : ouvert uniquement pendant l'appui sur le raccourci. L'indicateur orange de macOS le
+  confirme.
+- **Canal** : l'app vocale est un client du socket, comme la CLI. Elle ne contourne rien : chaque
+  action passe par le gate.
+- **Validations** : les validations N2 et N3 ne se font **pas encore à la voix**. Jarvis annonce la
+  demande et renvoie vers `jarvis approvals` ; la confirmation vocale N2 arrive au S4, et le PIN ne
+  sera jamais prononcé à voix haute.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

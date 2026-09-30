@@ -8,10 +8,13 @@ import type { AskHandlers, AskResult, Brain } from '../../apps/jarvisd/src/orche
  *
  *   call <tool> <json>   → gate.invoke
  *   ingest <text>        → the session reads external content (mail, web page…)
+ *   say <text>           → streams text as the model would
+ *   wait <ms>            → thinks for a while (interruptible, for barge-in tests)
  */
 export class ScriptedBrain implements Brain {
   readonly #gate: Gate;
   #session = new Session('user');
+  #interrupted = false;
 
   constructor(gate: Gate) {
     this.#gate = gate;
@@ -29,7 +32,19 @@ export class ScriptedBrain implements Brain {
       text += s;
       h.onText(s);
     };
+    this.#interrupted = false;
     for (const line of prompt.split('\n')) {
+      if (this.#interrupted) return { ok: false, text, error: 'interrupted' };
+      const wait = /^wait (\d+)$/.exec(line);
+      if (wait) {
+        const until = Date.now() + Number(wait[1]);
+        while (Date.now() < until && !this.#interrupted) await new Promise((r) => setTimeout(r, 5));
+        continue;
+      }
+      if (line.startsWith('say ')) {
+        emit(`${line.slice(4)}\n`);
+        continue;
+      }
       const call = /^call (\S+) (.*)$/s.exec(line);
       if (call) {
         const [, name = '', json = '{}'] = call;
@@ -47,6 +62,10 @@ export class ScriptedBrain implements Brain {
   }
 
   async stop(): Promise<void> {}
+
+  async interrupt(): Promise<void> {
+    this.#interrupted = true;
+  }
 
   async newSession(): Promise<void> {
     this.#session = new Session('user');

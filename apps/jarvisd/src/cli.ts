@@ -208,6 +208,58 @@ function printCosts(data: unknown): void {
     );
 }
 
+/**
+ * The voice app is launched through LaunchServices (`open`) so macOS attributes the Microphone
+ * and Speech permissions to "Jarvis Voice" itself; its output is routed back to this terminal.
+ */
+async function voiceCommand(args: string[]): Promise<void> {
+  const { execFileSync, spawn } = await import('node:child_process');
+  const { existsSync, mkdirSync } = await import('node:fs');
+  const { join, resolve } = await import('node:path');
+  const { homedir, tmpdir } = await import('node:os');
+  const dir = resolve(import.meta.dirname, '../../voice');
+  const app = join(dir, 'build', 'Jarvis Voice.app');
+  const [sub] = args;
+
+  if (sub === 'test') return void execFileSync(join(dir, 'test.sh'), { stdio: 'inherit' });
+  if (sub === 'build' || !existsSync(app))
+    execFileSync(join(dir, 'build.sh'), { stdio: 'inherit' });
+  if (sub === 'build') return;
+
+  let out = join(homedir(), 'Library', 'Logs', 'Jarvis', 'voice.log');
+  try {
+    out = execFileSync('/usr/bin/tty', { stdio: ['inherit', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    mkdirSync(join(homedir(), 'Library', 'Logs', 'Jarvis'), { recursive: true });
+    console.log(dim(`logs → ${out}`));
+  }
+  const openArgs = ['-W', '-n', '--stdout', out, '--stderr', out];
+  if (process.env.JARVIS_HOME) openArgs.push('--env', `JARVIS_HOME=${process.env.JARVIS_HOME}`);
+  openArgs.push(app);
+
+  if (sub === 'selftest') {
+    // Two spoken samples made with the system voices: tests recognition without the microphone.
+    const fr = join(tmpdir(), 'jarvis-selftest-fr.aiff');
+    const en = join(tmpdir(), 'jarvis-selftest-en.aiff');
+    execFileSync('/usr/bin/say', [
+      '-v',
+      'Thomas',
+      '-o',
+      fr,
+      'Ouvre VS Code sur le projet CodeVault.',
+    ]);
+    execFileSync('/usr/bin/say', ['-v', 'Samantha', '-o', en, 'What is on my calendar today?']);
+    openArgs.push('--args', '--selftest', fr, en);
+  }
+  const child = spawn('/usr/bin/open', openArgs, { stdio: 'inherit' });
+  process.on('SIGINT', () => {
+    spawn('/usr/bin/pkill', ['-x', 'jarvis-voice']);
+  });
+  await new Promise((r) => child.on('exit', r));
+}
+
 async function memoryCommand(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   type FactView = { id: number; kind: string; text: string; source: string };
@@ -269,6 +321,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis approve|deny <id>     valider / refuser
   jarvis costs [today|week|month]  consommation (équivalent API) et quota de l'abonnement
   jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
+  jarvis voice [build|test|selftest]  voix push-to-talk (maintiens ⌥Espace), 100 % locale
   jarvis audit tail [n]        dernières entrées du journal
   jarvis audit verify          vérifier la chaîne de hash du journal
   jarvis daemon [--dev]        lancer le daemon (--dev : policy non scellée, N3 désactivé)
@@ -446,6 +499,8 @@ async function main(argv: string[]): Promise<void> {
       );
     case 'memory':
       return memoryCommand(rest);
+    case 'voice':
+      return voiceCommand(rest);
     case 'auth':
     case 'pin':
     case 'policy':

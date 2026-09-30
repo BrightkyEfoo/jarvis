@@ -392,9 +392,12 @@ export class ClaudeBrain implements Brain {
       }
       return new Promise<AskResult>((resolve) => {
         this.#turn = { handlers, resolve, text: '', error: undefined, route };
+        // Spoken turns are tagged so the model answers for the ear (rule in the system prompt);
+        // tagging the message rather than the system prompt keeps the cached prefix intact.
+        const content = trigger === 'voice' ? `[voix] ${prompt}` : prompt;
         input.push({
           type: 'user',
-          message: { role: 'user', content: prompt },
+          message: { role: 'user', content },
           parent_tool_use_id: null,
         });
       });
@@ -418,6 +421,21 @@ export class ClaudeBrain implements Brain {
       q.close();
     }
     this.#finish({ ok: false, text: this.#turn?.text ?? '', error: `stopped: ${reason}` });
+  }
+
+  async interrupt(): Promise<void> {
+    const q = this.#q;
+    if (!q || !this.#turn) return;
+    await Promise.race([
+      q.interrupt().catch(() => undefined),
+      new Promise((r) => setTimeout(r, 1000)),
+    ]);
+    // The SDK closes the turn with a result. If it does not, reset the process rather than let a
+    // late result be mistaken for the next turn's answer.
+    const turn = this.#turn;
+    setTimeout(() => {
+      if (turn && this.#turn === turn) void this.stop('interrupt did not end the turn');
+    }, 3000).unref();
   }
 
   async newSession(): Promise<void> {

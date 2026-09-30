@@ -133,13 +133,17 @@ async function handle(
             onText: (text) => send({ id: req.id, type: 'text', text }),
             onTool: (name) => send({ id: req.id, type: 'tool', name }),
           },
-          'cli',
+          req.trigger ?? 'cli',
         );
         return done({ ...r, quota: quotaView(rt) });
       } finally {
         off();
       }
     }
+
+    case 'interrupt':
+      await rt.brain?.interrupt();
+      return done({ interrupted: true });
 
     case 'stop':
       rt.stop(req.reason ?? 'STOP requested from the CLI');
