@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Speech
 import SwiftUI
 
@@ -28,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let config = VoiceConfig.load()
     lazy var store = Store(socketPath: config.socketPath)
     var controller: Controller?
+    var actuator: Actuator?
+    var stopKey: HotKey?
     var openWindow: OpenWindowAction?
     private var pendingDashboard = false
 
@@ -45,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         store.start()
+        startHands(enabled: !args.contains("--no-actuator"))
         if !args.contains("--no-voice") {
             let c = Controller(config: config)
             c.onState = { [weak self] s in self?.store.voice = Store.VoiceState(rawValue: s) ?? .idle }
@@ -52,6 +56,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller = c
         }
         if args.contains("--dashboard") { openDashboard() }
+    }
+
+    /// Computer control (browser, Notes, Reminders, any app) and its emergency brake: ⌃⎋ cancels
+    /// what the hands are doing and engages STOP in the daemon, from anywhere.
+    private func startHands(enabled: Bool) {
+        if enabled {
+            let a = Actuator(socketPath: config.socketPath)
+            a.onActing = { [weak self] app in self?.store.acting = app }
+            a.onConnection = { [weak self] ok in self?.store.actuatorConnected = ok }
+            a.start()
+            actuator = a
+        }
+        stopKey = HotKey(keyCode: UInt32(kVK_Escape), modifiers: UInt32(controlKey), id: 2)
+        stopKey?.onPress = { [weak self] in
+            self?.actuator?.cancelAll()
+            self?.store.stop()
+        }
     }
 
     /// `open jarvis://dashboard` (used by `jarvis dashboard`).

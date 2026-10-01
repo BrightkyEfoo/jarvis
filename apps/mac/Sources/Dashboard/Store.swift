@@ -23,6 +23,9 @@ final class Store: ObservableObject {
     @Published var activity = "En veille"
     @Published var thinking = false
     @Published var voice = VoiceState.off
+    /// App Jarvis is driving right now (browser, Notes, any app), nil when its hands are idle.
+    @Published var acting: String?
+    @Published var actuatorConnected = false
     @Published var lastError: String?
     @Published var signature = "fait avec ❤️ par Brightky Efo'o"
     @Published var auditExhausted = false

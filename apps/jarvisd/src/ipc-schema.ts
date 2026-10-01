@@ -75,6 +75,25 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
     .strict(),
   z.object({ id, cmd: z.literal('memory_search'), query: z.string().min(1).max(300) }).strict(),
   z.object({ id, cmd: z.literal('memory_forget'), factId: z.number().int().positive() }).strict(),
+  /** Jarvis.app offers to act on the Mac; actions then stream down this request. */
+  z
+    .object({
+      id,
+      cmd: z.literal('actuator_register'),
+      version: z.string().max(40),
+      capabilities: z.array(z.string().max(40)).max(50),
+    })
+    .strict(),
+  z
+    .object({
+      id,
+      cmd: z.literal('actuator_result'),
+      reqId: z.string().max(64),
+      ok: z.boolean(),
+      result: z.unknown().optional(),
+      error: z.string().max(4000).optional(),
+    })
+    .strict(),
 ]);
 
 export type Request = z.infer<typeof RequestSchema>;

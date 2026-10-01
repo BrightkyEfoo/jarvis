@@ -1,4 +1,5 @@
 import type { Socket } from 'node:net';
+import type { ActuatorAction } from './computer/bridge.ts';
 
 export type { Request } from './ipc-schema.ts';
 
@@ -14,6 +15,8 @@ export type Reply =
       channel: string;
     }
   | { id: string; type: 'event'; event: unknown }
+  | { id: string; type: 'actuate'; reqId: string; action: ActuatorAction }
+  | { id: string; type: 'actuate_cancel'; reqId: string }
   | { id: string; type: 'done'; data?: unknown }
   | { id: string; type: 'error'; error: string };
 
@@ -31,14 +34,20 @@ export interface ApprovalView {
 }
 
 export const MAX_LINE = 64 * 1024;
+/** Screenshots come back from Jarvis.app as base64 JPEG. */
+export const MAX_ACTUATOR_LINE = 16 * 1024 * 1024;
 
 /** Newline-delimited JSON over a stream socket. Oversized lines kill the connection. */
-export function onLines(socket: Socket, handle: (line: string) => void): void {
+export function onLines(
+  socket: Socket,
+  handle: (line: string) => void,
+  limit: () => number = () => MAX_LINE,
+): void {
   let buf = '';
   socket.setEncoding('utf8');
   socket.on('data', (chunk: string) => {
     buf += chunk;
-    if (buf.length > MAX_LINE && !buf.includes('\n')) {
+    if (buf.length > limit() && !buf.includes('\n')) {
       socket.destroy();
       return;
     }

@@ -23,6 +23,7 @@ import type {
 } from '@jarvis/connectors';
 import { hashPin, sha256 } from '@jarvis/policy';
 import { MemoryStore, SecretName } from '@jarvis/secrets';
+import type { ActuatorAction } from '../../apps/jarvisd/src/computer/bridge.ts';
 import { createRuntime, type Runtime } from '../../apps/jarvisd/src/daemon/runtime.ts';
 import { startServer } from '../../apps/jarvisd/src/daemon/server.ts';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
@@ -347,4 +348,72 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
       rmSync(base, { recursive: true, force: true });
     },
   };
+}
+
+export interface FakeApp {
+  /** Every action the daemon sent, in order. */
+  readonly actions: ActuatorAction[];
+  readonly reqIds: string[];
+  readonly cancelled: string[];
+  /** Raw line sender, to test what the daemon accepts from this connection. */
+  send(msg: unknown): void;
+  close(): void;
+}
+
+/**
+ * Stands in for Jarvis.app: registers as the actuator over the real socket and answers each
+ * action with `answer` (throw to fail it; return a never-settling promise to hang).
+ */
+export async function connectFakeApp(
+  socketPath: string,
+  answer: (a: ActuatorAction) => unknown | Promise<unknown>,
+): Promise<FakeApp> {
+  const s = connect(socketPath);
+  await new Promise<void>((r, j) => {
+    s.once('connect', () => r());
+    s.once('error', j);
+  });
+  const actions: ActuatorAction[] = [];
+  const reqIds: string[] = [];
+  const cancelled: string[] = [];
+  const send = (msg: unknown) => s.write(`${JSON.stringify(msg)}\n`);
+  let registered: () => void = () => undefined;
+  const ready = new Promise<void>((r) => {
+    registered = r;
+  });
+  let buf = '';
+  s.setEncoding('utf8');
+  s.on('data', (chunk: string) => {
+    buf += chunk;
+    for (let nl = buf.indexOf('\n'); nl >= 0; nl = buf.indexOf('\n')) {
+      const r = JSON.parse(buf.slice(0, nl)) as Reply;
+      buf = buf.slice(nl + 1);
+      if (r.type === 'event') registered();
+      if (r.type === 'actuate_cancel') cancelled.push(r.reqId);
+      if (r.type !== 'actuate') continue;
+      actions.push(r.action);
+      reqIds.push(r.reqId);
+      Promise.resolve()
+        .then(() => answer(r.action))
+        .then(
+          (result) => send({ id: 'res', cmd: 'actuator_result', reqId: r.reqId, ok: true, result }),
+          (e: Error) =>
+            send({
+              id: 'res',
+              cmd: 'actuator_result',
+              reqId: r.reqId,
+              ok: false,
+              error: e.message,
+            }),
+        );
+    }
+  });
+  send({
+    id: 'reg',
+    cmd: 'actuator_register',
+    version: 'test',
+    capabilities: ['browser', 'notes', 'reminders', 'screen'],
+  });
+  await ready;
+  return { actions, reqIds, cancelled, send, close: () => s.end() };
 }

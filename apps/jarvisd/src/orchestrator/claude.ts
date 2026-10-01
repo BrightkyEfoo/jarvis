@@ -139,7 +139,15 @@ export class ClaudeBrain implements Brain {
         def.input,
         async (args) => {
           const r = await d.gate.invoke(def.name, args, this.#session, { trigger: this.#trigger });
-          return { content: [{ type: 'text', text: r.content }], isError: !r.ok };
+          const images = (r.images ?? []).map((i) => ({
+            type: 'image' as const,
+            data: i.data,
+            mimeType: i.mimeType,
+          }));
+          return {
+            content: [{ type: 'text' as const, text: r.content }, ...images],
+            isError: !r.ok,
+          };
         },
         { alwaysLoad: true },
       ),

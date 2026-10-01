@@ -23,6 +23,7 @@ import {
   ShellClassifier,
 } from '@jarvis/policy';
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
+import { type Actuator, ActuatorBridge } from '../computer/bridge.ts';
 import type { Brain } from '../orchestrator/brain.ts';
 import { ClaudeBrain } from '../orchestrator/claude.ts';
 import {
@@ -33,6 +34,7 @@ import {
 import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import { ClaudeResearcher, type Researcher } from '../orchestrator/research.ts';
 import type { AppPaths } from '../paths.ts';
+import { createComputerTools } from '../tools/computer.ts';
 import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
@@ -68,6 +70,8 @@ export interface RuntimeOptions {
   };
   /** Tests inject a fake research agent and YouTube access. */
   research?: { researcher: Researcher | null; youtube: YouTube | null };
+  /** Tests inject a fake Jarvis.app; production waits for the real one on the socket. */
+  actuator?: Actuator;
 }
 
 export type Activity =
@@ -76,6 +80,7 @@ export type Activity =
   | { kind: 'turn_end'; ok: boolean; model?: string; costUsd?: number; ttftMs?: number }
   | { kind: 'quota'; window: string; utilization: number | null; status: string }
   | { kind: 'stop'; reason: string }
+  | { kind: 'actuator'; connected: boolean }
   | { kind: 'resume' };
 
 export interface AccountStatus {
@@ -170,6 +175,9 @@ export interface Runtime {
   quota: Map<string, RateLimitInfo>;
   /** Null when no subscription token is stored yet (`jarvis auth set-token`). */
   brain: Brain | null;
+  /** Where Jarvis.app registers as the actuator (browser, apps, screen). */
+  bridge: ActuatorBridge;
+  actuatorInfo(): { connected: boolean; version?: string; capabilities?: string[] };
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
   quotaWarning: string | null;
@@ -293,6 +301,10 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     youtube: ytdlp ? new YtDlp({ binary: ytdlp, scratch: paths.scratch }) : null,
   };
   for (const t of createResearchTools(research)) gate.register(t);
+
+  const bridge = new ActuatorBridge();
+  const actuator = o.actuator ?? bridge;
+  for (const t of createComputerTools({ policy, actuator })) gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 
   const rt: Runtime = {
@@ -308,6 +320,11 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     startedAt: Date.now(),
     quota,
     brain: null,
+    bridge,
+    actuatorInfo: () =>
+      actuator.info
+        ? { connected: actuator.connected, ...actuator.info }
+        : { connected: actuator.connected },
     devMode: o.devMode,
     quotaWarning: null,
     stop: (reason) => killswitch.engage(reason),

@@ -103,6 +103,23 @@ macos:
   shortcuts: []
   shortcuts_deny: []
 
+# Driving the Mac when there is no API: Brightky's browser profile, Notes, Reminders, and any app
+# through screenshots + clicks/keystrokes (done by Jarvis.app, which holds the macOS permissions).
+# Built into the code and NOT relaxable here: banking/payment/password/account-security sites,
+# payment buttons, password/code/card fields, Terminal-like apps, System Settings, password
+# managers and Jarvis itself are never driven (N4). This section can only add to those lists.
+computer:
+  browser: Arc # or "Google Chrome"
+  # Sites / apps where clicks that send or publish (Envoyer, Publier, Return in a chat…) need no
+  # confirmation. Deleting, merging, approving or closing is always confirmed, even here.
+  # Example: [github.com, trello.com]
+  commit_allow_domains: []
+  commit_allow_apps:
+    - Notes
+    - TextEdit
+  forbidden_domains: []
+  forbidden_apps: []
+
 projects:
   # Sub-folders of these are projects ("ouvre VS Code sur le projet X"). Must be in read_roots.
   roots:

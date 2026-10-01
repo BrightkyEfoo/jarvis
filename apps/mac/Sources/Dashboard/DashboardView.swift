@@ -544,6 +544,15 @@ struct SettingsView: View {
                 Button("Nouvelle conversation (efface le contexte)") { store.newSession() }
                 Button("Ouvrir les logs") { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Jarvis")) }
             }
+            Section("Pilotage du Mac") {
+                LabeledContent("Mains", value: store.acting.map { "en train de piloter \($0)" } ?? (store.actuatorConnected ? "prêtes" : "déconnectées"))
+                LabeledContent("Arrêt d'urgence", value: "⌃⎋ (Ctrl + Échap), partout")
+                Text("Autorisations macOS pour Jarvis : Accessibilité, Enregistrement de l'écran, Automatisation (navigateur, Notes, Rappels). Jamais : Terminal, Réglages, Trousseau, gestionnaires de mots de passe, banques, paiements.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Ouvrir les réglages Accessibilité") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                }
+            }
             Section("Voix") {
                 LabeledContent("Raccourci", value: VoiceConfig.load().hotkeyLabel)
                 LabeledContent("Voix", value: "\(VoiceConfig.load().frVoice) (FR) · \(VoiceConfig.load().enVoice) (EN)")

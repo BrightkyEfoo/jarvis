@@ -77,6 +77,28 @@ enum VoiceTests {
         check(Wording.fr("Read mail perso#m1") == "Lire le mail perso#m1", "read mail before read")
         check(Wording.fr("Triage mail all accounts (24 h)") == "Tri des mails : tous les comptes (24 h)", "triage", Wording.fr("Triage mail all accounts (24 h)"))
 
+        check(Wording.fr(#"Click button "Comment" on github.com"#) == "Cliquer sur « Comment » (button) sur github.com", "browser click",
+              Wording.fr(#"Click button "Comment" on github.com"#))
+        check(Wording.fr(#"Click Button "Envoyer" in WhatsApp"#) == "Cliquer sur « Envoyer » dans WhatsApp", "screen click")
+        check(Wording.fr(#"Type "LGTM" into textarea "Add a comment" on github.com"#) == "Taper « LGTM » dans « Add a comment » sur github.com", "fill")
+        check(Wording.fr("Press cmd+q in Word") == "Appuyer sur cmd+q dans Word", "key")
+        check(Wording.fr("Open https://x.cm in Arc") == "Ouvrir https://x.cm dans Arc", "browser open")
+
+        // Computer control guard, independent of the daemon.
+        for url in ["https://www.paypal.com/x", "https://ebanking.ecobank.com", "https://www.afrilandfirstbank.com", "https://github.com/settings/tokens",
+                    "https://accounts.google.com/"] {
+            check((try? ActGuard.check(url: url)) == nil, "app refuses \(url)")
+        }
+        for url in ["https://github.com/acme", "https://mail.google.com/"] {
+            check((try? ActGuard.check(url: url)) != nil, "app allows \(url)")
+        }
+        check(ActGuard.isSecure(role: "AXTextField", subrole: "AXSecureTextField", label: ""), "secure subrole")
+        check(ActGuard.isSecure(role: "AXTextField", subrole: nil, label: "Mot de passe"), "password label")
+        check(!ActGuard.isSecure(role: "AXButton", subrole: nil, label: "Mot de passe oublié ?"), "button is not a field")
+        check(Osa.explain("execution error: Not authorized to send Apple events to Arc. (-1743)").contains("Automatisation"), "TCC hint")
+        check(Osa.explain("execution error: Error: the tab was closed: read the page again (-2700)") == "the tab was closed: read the page again",
+              "JS error unwrapped", Osa.explain("execution error: Error: the tab was closed: read the page again (-2700)"))
+
         print(failures == 0 ? "✔ \(passed) voice tests passed" : "✖ \(failures) failed, \(passed) passed")
         exit(failures == 0 ? 0 : 1)
     }

@@ -489,3 +489,84 @@ Rust, alors que la data est limitée.
 - `ANTHROPIC_API_KEY` doit être absent de l'environnement.
 
 Le format exact de `attribution` sera vérifié sur le binaire réel avant usage.
+
+## ADR-024 — Pilotage du Mac quand il n'y a pas d'API (01/10/2026)
+
+**Demande de Brightky** : quand un token ou une API n'existe pas, Jarvis doit utiliser son
+navigateur, ses notes et **toutes ses applications**, tranquillement.
+
+**Ses choix** :
+- navigateur : son **profil principal** (Arc, Chrome possible via `computer.browser`) ;
+- actions qui engagent (Envoyer, Publier, Valider…) : **confirmées, sauf liste blanche** ;
+  payer reste interdit ;
+- priorité : le pilotage du Mac d'abord, avant les workers de code (S5–S7).
+
+**Architecture**
+- **Jarvis.app tient les mains**. Elle détient seule les autorisations macOS : Accessibilité,
+  Enregistrement de l'écran et Automatisation. Elle se connecte au socket du daemon et s'enregistre
+  comme *actionneur* (`actuator_register`). Le daemon lui envoie des actions déjà décidées
+  (`actuate`) et attend `actuator_result`. Node n'obtient jamais ces autorisations : une permission
+  TCC donnée à `node` vaudrait pour n'importe quel script Node.
+- **Catalogue fixe**. L'app n'exécute jamais de source envoyée par le daemon. Elle exécute ses
+  propres scripts JXA, via `osascript` lancé par l'app, donc attribué à Jarvis par TCC. Les
+  valeurs (URL, texte, identifiants) passent **en argv** : rien de ce que dit une page ou une note
+  ne peut devenir du code.
+- **Trois familles d'outils** :
+  - **navigateur** : `browser_tabs`, `browser_open`, `browser_read`, `browser_click`,
+    `browser_fill`, `browser_back`. Ils passent par Apple Events et du JS injecté dans l'onglet,
+    sur le profil connecté de Brightky ;
+  - **Notes et Rappels** : `notes_*`, `reminders_*`. Apple Events, sans écran ;
+  - **n'importe quelle app** : `screen_look` (capture ScreenCaptureKit de la fenêtre, avec
+    l'arbre d'accessibilité numéroté) et `screen_act` (clic, frappe, touche, défilement par
+    CGEvent).
+
+**Règles** (`packages/policy/src/screen.ts`, listes intégrées au code et non relâchables)
+
+| Cas | Niveau |
+|---|---|
+| Sites bancaires, de paiement, de gestion de mots de passe, de sécurité de compte (`accounts.google.com`, `github.com/settings`…) | N4 |
+| Boutons de paiement (Payer, Acheter, Commander, Faire un don…) | N4 |
+| Champs mot de passe, code à usage unique ou carte | N4 |
+| Terminal et équivalents, Réglages Système, Trousseau, gestionnaires de mots de passe, Jarvis lui-même | N4 |
+| Touches qui font sortir de l'app : ⌘Espace, ⌘Tab, ⌥⌘Échap, ⇧⌘Q… | N4 |
+| Actions destructrices : Supprimer, Merge, Approuver, Fermer le ticket, ⌘Q, ⌘⌫… | N2, **même en liste blanche** |
+| Actions qui engagent : Envoyer, Publier, Commenter, Réserver, Entrée dans une conversation… | N2, ou N1 sur un domaine ou une app de `commit_allow_*` |
+| Clic simple, lecture | N1 / N0 |
+
+**Le niveau vient de ce que l'élément est réellement, pas de ce que dit le modèle.**
+- **Navigateur** : `browser_read` numérote les éléments et le daemon garde leur description. Le
+  clic est classé d'après le libellé réel, et `commit: true`, déclaré par le modèle, ne peut
+  qu'**élever** le niveau. Dans la page, une empreinte (origine, balise, libellé, href) est
+  revérifiée juste avant le clic : si la page a changé, le clic est refusé.
+- **Écran** : avant chaque clic ou frappe, une sonde d'accessibilité lit l'élément sous le
+  pointeur. Si c'est un « Envoyer » non déclaré, l'action est refusée (`Refusal`, nouvelle
+  primitive du gate) et le modèle doit redemander avec `commit: true`. Le libellé est revérifié
+  entre la sonde et l'action.
+- **Taint** : tout ce qui est affiché (page, capture, note, onglet) **teinte la session**.
+- **Audit** : les captures vont au modèle (bloc image MCP) mais **jamais dans l'audit**, qui ne
+  garde que leur empreinte SHA-256 et leur taille.
+
+**Clavier** : les caractères passent par la disposition active (UCKeyTranslate). Sur un clavier
+AZERTY, « cmd+a » ne devient jamais ⌘Q.
+
+**Arrêt d'urgence** : **⌃⎋** (Ctrl + Échap), raccourci global de Jarvis.app. Il annule l'action
+en cours dans l'app et déclenche STOP dans le daemon. STOP envoie aussi `actuate_cancel`, qui tue
+l'`osascript` en cours. Pendant qu'il pilote, l'icône de la barre de menus passe en curseur et le
+panneau affiche « Jarvis pilote … ».
+
+**Défense en profondeur côté app** : même si le daemon se trompait ou était usurpé, Jarvis.app
+refuse d'elle-même :
+- les apps interdites (par identifiant de bundle) ;
+- les sites bancaires et d'identité ;
+- la frappe dans un champ sécurisé ;
+- les touches système.
+
+**Écartés**
+- **Playwright / CDP** : il ne peut pas piloter le profil principal sans relancer le navigateur
+  avec un port de debug, ce qui ouvre une porte à tout process local, et il pèse environ 13 Mo.
+- **NSAppleScript en processus** : la source y serait interpolée et l'exécution difficile à tuer.
+  `osascript` + argv est sûr et tuable, pour environ 60 ms de plus par action.
+
+**Risque assumé** : sur un domaine en liste blanche, une page piégée pourrait pousser Jarvis à
+cliquer « Commenter » sans confirmation. Les destructions et les paiements restent bloqués ou
+confirmés. La liste blanche est vide par défaut ; Brightky la remplit en connaissance de cause.

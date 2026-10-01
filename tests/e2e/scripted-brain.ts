@@ -50,7 +50,8 @@ export class ScriptedBrain implements Brain {
         const [, name = '', json = '{}'] = call;
         h.onTool?.(`mcp__jarvis__${name}`);
         const r = await this.#gate.invoke(name, JSON.parse(json), this.#session, { trigger });
-        emit(`${r.ok ? 'OK' : 'KO'} ${r.content}\n`);
+        const imgs = r.images?.length ? ` [images:${r.images.length}]` : '';
+        emit(`${r.ok ? 'OK' : 'KO'} ${r.content}${imgs}\n`);
       } else if (line.startsWith('ingest ')) {
         this.#session.ingestExternal(line.slice('ingest '.length));
         emit('ingested\n');

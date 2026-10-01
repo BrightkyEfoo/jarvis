@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.0 — Pilotage du Mac (01/10/2026)
+
+### Ajouté
+- **Jarvis pilote le Mac quand il n'y a pas d'API** (ADR-024), via Jarvis.app, seule détentrice
+  des autorisations macOS :
+  - **navigateur** (profil principal Arc ou Chrome) : `browser_tabs`, `browser_open`,
+    `browser_read` (texte et éléments numérotés), `browser_click`, `browser_fill`,
+    `browser_back` ;
+  - **Notes** : `notes_list`, `notes_read`, `notes_create`, `notes_append` ;
+  - **Rappels** : `reminders_list`, `reminders_add`, `reminders_complete` ;
+  - **n'importe quelle app** : `screen_look` (capture + contrôles numérotés), `screen_act`
+    (clic, double-clic, frappe, touche, défilement).
+- **Pont d'actionneur** entre le daemon et l'app (`actuator_register`, `actuate`,
+  `actuator_result`, `actuate_cancel`), lignes jusqu'à 16 Mio pour les captures.
+- **Gate** : les outils peuvent renvoyer des images (seule leur empreinte va dans l'audit) et
+  lever un `Refusal` quand l'état réel (page, élément sous le pointeur) l'exige.
+- **Politique** : section `computer` (navigateur, `commit_allow_domains`, `commit_allow_apps`,
+  domaines et apps interdits en plus des listes intégrées).
+- **Arrêt d'urgence ⌃⎋**, global ; indicateur « Jarvis pilote … » dans la barre de menus ;
+  état des « mains » dans les réglages du tableau de bord ; `jarvis status` affiche l'actionneur.
+- **Tests** : 16 e2e avec un faux Jarvis.app sur le vrai socket, 7 du pont, 95 cas de règles
+  (sites, apps, libellés, touches, champs secrets), 17 tests Swift (garde-fous, libellés FR).
+
+### Modifié
+- `HotKey` gère plusieurs raccourcis (voix et STOP).
+
 ## 0.6.0 — Tableau de bord Jarvis.app (S8 avancé) (01/10/2026)
 
 ### Ajouté

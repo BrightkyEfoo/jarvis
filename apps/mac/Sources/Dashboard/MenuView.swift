@@ -15,6 +15,7 @@ struct StatusIcon: View {
     private var symbol: String {
         if store.stopped { return "stop.circle.fill" }
         if !store.connected { return "circle.dashed" }
+        if store.acting != nil { return "cursorarrow.click.2" }
         switch store.voice {
         case .listening, .transcribing: return "waveform.circle.fill"
         case .speaking: return "speaker.wave.2.circle.fill"
@@ -39,6 +40,10 @@ struct MenuView: View {
                 ConnectionPill()
             }
             Text(store.activity).font(.callout).lineLimit(2).foregroundStyle(.secondary)
+            if let app = store.acting {
+                Label("Jarvis pilote \(app) — ⌃⎋ pour tout arrêter", systemImage: "cursorarrow.click.2")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+            }
 
             if !store.approvals.isEmpty {
                 Divider()
@@ -86,7 +91,7 @@ struct MenuView: View {
                 Button("Tableau de bord") { openDashboard() }.keyboardShortcut("d")
             }
             HStack {
-                Text("Parler : maintiens ⌥Espace").font(.caption).foregroundStyle(.secondary)
+                Text("Parler : maintiens ⌥Espace · STOP : ⌃⎋").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Quitter") { NSApp.terminate(nil) }.controlSize(.small)
             }

@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ApprovalBroker } from './approvals.ts';
 import type { Decision, PolicyEngine } from './engine.ts';
 import type { KillSwitch } from './killswitch.ts';
-import { type Classification, forbid, levelName, N3 } from './levels.ts';
+import { type Classification, forbid, levelName, N3, N4 } from './levels.ts';
 import type { Session } from './provenance.ts';
 
 export interface ToolContext {
@@ -18,6 +18,30 @@ export interface RunContext extends ToolContext {
 
 type Args<S extends z.ZodRawShape> = z.infer<z.ZodObject<S>>;
 
+export interface ToolImage {
+  /** base64, no data: prefix. */
+  data: string;
+  mimeType: 'image/jpeg' | 'image/png';
+}
+
+/** What a tool returns when text is not enough (screenshots). */
+export interface ToolOutput {
+  text: string;
+  images?: ToolImage[];
+}
+
+/**
+ * Thrown by a tool when a check that needs the live state (the page actually open, the element
+ * actually under the pointer) refuses the action. Audited as a refusal, not as an error.
+ */
+export class Refusal extends Error {
+  readonly rule: string;
+  constructor(rule: string, reason: string) {
+    super(reason);
+    this.rule = rule;
+  }
+}
+
 export interface ToolDef<S extends z.ZodRawShape = z.ZodRawShape> {
   /** snake_case; exposed to the model as mcp__jarvis__<name>. */
   name: string;
@@ -29,7 +53,7 @@ export interface ToolDef<S extends z.ZodRawShape = z.ZodRawShape> {
   summarize: (args: Args<S>) => string;
   /** Output comes from outside Brightky (files, web, mail…): taints the session. */
   ingestsExternal?: boolean;
-  run: (args: Args<S>, ctx: RunContext) => Promise<string>;
+  run: (args: Args<S>, ctx: RunContext) => Promise<string | ToolOutput>;
 }
 
 const TOOL_NAME = /^[a-z][a-z0-9_]{1,40}$/;
@@ -73,6 +97,8 @@ export interface GateDeps {
 export interface GateResult {
   ok: boolean;
   content: string;
+  /** Screenshots for the model. Never audited: only their hash and size are. */
+  images?: ToolImage[];
   actionId: string;
   decision?: Decision;
 }
@@ -226,9 +252,15 @@ export class Gate {
 
     const signal = AbortSignal.any([d.killswitch.signal, AbortSignal.timeout(d.toolTimeoutMs)]);
     let output: string;
+    let images: ToolImage[] = [];
     try {
-      output = await tool.def.run(args, { ...ctx, signal, classification: cls });
+      const out = await tool.def.run(args, { ...ctx, signal, classification: cls });
+      output = typeof out === 'string' ? out : out.text;
+      if (typeof out !== 'string') images = out.images ?? [];
     } catch (e) {
+      if (e instanceof Refusal) {
+        return refuse({ level: N4, rule: e.rule, reason: d.redact(e.message) }, 'deny', decision);
+      }
       const message = d.redact((e as Error).message ?? String(e));
       d.audit.append({
         event: 'result',
@@ -257,8 +289,20 @@ export class Gate {
       rule: decision.rule,
       outcome: 'ok',
       durationMs: performance.now() - t0,
-      data: { chars: content.length, autoApproved: decision.autoApproved, summary },
+      data: {
+        chars: content.length,
+        autoApproved: decision.autoApproved,
+        summary,
+        ...(images.length && {
+          images: images.map((i) => ({
+            sha256: createHash('sha256').update(i.data).digest('hex').slice(0, 16),
+            bytes: Math.floor((i.data.length * 3) / 4),
+          })),
+        }),
+      },
     });
-    return { ok: true, content, actionId, decision };
+    return images.length
+      ? { ok: true, content, images, actionId, decision }
+      : { ok: true, content, actionId, decision };
   }
 }

@@ -8,6 +8,7 @@ export * from './paths.ts';
 export * from './pin.ts';
 export * from './provenance.ts';
 export * from './schema.ts';
+export * from './screen.ts';
 export * from './shell/classify.ts';
 export * from './shell/exec.ts';
 export * from './shell/parse.ts';

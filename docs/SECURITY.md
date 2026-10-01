@@ -133,6 +133,40 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   signature auto-signée, qui sert à stabiliser l'identité TCC de l'app. Son mot de passe est
   aléatoire, et ce n'est pas celui de Brightky.
 
+## Pilotage du Mac (navigateur, apps, écran)
+
+- **Qui tient les autorisations** : Jarvis.app seule (Accessibilité, Enregistrement de l'écran,
+  Automatisation). Jamais `node` : une autorisation TCC donnée à Node vaudrait pour tout script
+  Node de la machine.
+- **Pas de code venu de l'extérieur** :
+  - l'app exécute un catalogue fixe de scripts ;
+  - les valeurs passent en argv à `osascript`, jamais interpolées dans une source ;
+  - le JS injecté dans les pages est une constante de l'app.
+- **N4 dans le code** :
+  - sites bancaires, de paiement, de mots de passe, de sécurité de compte ;
+  - boutons de paiement ;
+  - champs mot de passe, code ou carte ;
+  - Terminal et équivalents, Réglages, Trousseau, gestionnaires de mots de passe, Jarvis ;
+  - touches qui font sortir de l'app (⌘Espace, ⌘Tab…).
+
+  La politique peut seulement allonger ces listes.
+- **Le réel décide** :
+  - le niveau d'un clic vient du libellé réel de l'élément (empreinte revérifiée dans la page,
+    sonde d'accessibilité à l'écran) ;
+  - `commit: true` ne peut qu'élever le niveau ;
+  - un « Envoyer » non déclaré est refusé.
+- **Liste blanche** (`commit_allow_*`, vide par défaut) : elle dispense de confirmation l'envoi
+  et la publication, jamais la suppression, le merge, l'approbation ni le paiement.
+- **Taint** : tout affichage (page, capture, note) teinte la session. Ensuite, N3 est refusé et
+  N2 exige un humain.
+- **Captures** : envoyées au modèle, jamais écrites dans l'audit (empreinte et taille seulement).
+  Les apps interdites ne sont jamais capturées.
+- **Défense en profondeur** : l'app refuse d'elle-même les apps interdites (par identifiant de
+  bundle), les sites bancaires et d'identité, la frappe dans un champ sécurisé et les touches
+  système, même sur ordre du daemon.
+- **Arrêt** : ⌃⎋ global, STOP du daemon (`actuate_cancel` tue l'`osascript` en cours). Une seule
+  connexion peut répondre aux actions : celle qui s'est enregistrée.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y
@@ -154,6 +188,9 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 | R7 | Un process malveillant sous ton utilisateur peut modifier le plist launchd ou l'environnement (S4) | Hors modèle de menace : c'est une machine déjà compromise | Utilisateur dédié (réévaluation au S12) |
 | R8 | `NODE_TLS_REJECT_UNAUTHORIZED=0` est présent dans l'environnement de lancement de VS Code | jarvisd et `pnpm install` refusent de démarrer | **Brightky** : trouver et retirer la source |
 | R9 | Taint grossier au niveau de la session | Choix délibéré de sécurité | Lecteur en quarantaine (S4 et S5) |
+| R10 | Un process local qui usurperait le socket du daemon pourrait commander l'actionneur de Jarvis.app (et ses autorisations TCC) | Catalogue fixe, refus intégrés à l'app, dossier `run/` en 0700 | S12 : l'app vérifie la signature du pair (`LOCAL_PEERPID` + code signing) |
+| R11 | Sur un domaine en liste blanche, une page piégée peut obtenir un « Commenter » sans confirmation | Liste vide par défaut ; destructions et paiements jamais dispensés | Choix de Brightky, à garder court |
+| R12 | Une capture d'écran peut montrer des données sensibles affichées dans une app autorisée | Apps sensibles exclues, captures hors audit | Masquage des zones sensibles (plus tard) |
 
 ## Signaler un problème
 

@@ -148,6 +148,20 @@ export const PolicySchema = z
       })
       .strict()
       .prefault({}),
+    computer: z
+      .object({
+        /** Browser Jarvis drives (Brightky's own profile, through AppleScript). */
+        browser: z.enum(['Arc', 'Google Chrome']).prefault('Arc'),
+        /** Sites where Envoyer/Publier/Supprimer… need no confirmation. */
+        commit_allow_domains: z.array(z.string()).prefault([]),
+        /** Apps where commit clicks need no confirmation (visual control). */
+        commit_allow_apps: z.array(z.string()).prefault([]),
+        /** Extra off-limits sites / apps, on top of the built-in lists. */
+        forbidden_domains: z.array(z.string()).prefault([]),
+        forbidden_apps: z.array(z.string()).prefault([]),
+      })
+      .strict()
+      .prefault({}),
     memory: z
       .object({
         /** Markdown notes written by Brightky; Jarvis reads them, never writes them. */

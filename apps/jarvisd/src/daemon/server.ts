@@ -2,7 +2,14 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { connect, createServer, type Server, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import type { ApprovalOutcome, ApprovalRequest } from '@jarvis/policy';
-import { type ApprovalView, onLines, type Reply, writeLine } from '../ipc.ts';
+import {
+  type ApprovalView,
+  MAX_ACTUATOR_LINE,
+  MAX_LINE,
+  onLines,
+  type Reply,
+  writeLine,
+} from '../ipc.ts';
 import { type Request, RequestSchema } from '../ipc-schema.ts';
 import type { Activity, Runtime } from './runtime.ts';
 
@@ -78,18 +85,58 @@ function serve(rt: Runtime, socket: Socket): void {
     return off;
   };
 
-  onLines(socket, (line) => {
-    let req: Request;
-    try {
-      req = RequestSchema.parse(JSON.parse(line));
-    } catch {
-      send({ id: 'unknown', type: 'error', error: 'invalid request' });
+  /** Set once this connection is Jarvis.app's actuator: only it may answer actions. */
+  let actuator = false;
+  const actuatorCmd = (req: Request & { cmd: 'actuator_register' | 'actuator_result' }) => {
+    if (req.cmd === 'actuator_result') {
+      if (actuator) rt.bridge.settle(req.reqId, req.ok, req.result, req.error);
       return;
     }
-    handle(rt, req, send, forwardApprovals, (fn) => cleanups.push(fn)).catch((e: Error) =>
-      send({ id: req.id, type: 'error', error: e.message }),
-    );
-  });
+    if (actuator) return send({ id: req.id, type: 'error', error: 'already registered' });
+    actuator = true;
+    const detach = rt.bridge.attach({
+      version: req.version,
+      capabilities: req.capabilities,
+      send: (m) =>
+        'cancel' in m
+          ? send({ id: req.id, type: 'actuate_cancel', reqId: m.reqId })
+          : send({ id: req.id, type: 'actuate', reqId: m.reqId, action: m.action }),
+    });
+    rt.audit.append({
+      event: 'system',
+      outcome: 'actuator_connected',
+      data: { version: req.version, capabilities: req.capabilities },
+    });
+    rt.events.emit('activity', { kind: 'actuator', connected: true });
+    cleanups.push(() => {
+      detach();
+      rt.events.emit('activity', { kind: 'actuator', connected: false });
+      try {
+        rt.audit.append({ event: 'system', outcome: 'actuator_disconnected' });
+      } catch {
+        // daemon shutting down: the audit log is already closed
+      }
+    });
+    send({ id: req.id, type: 'event', event: { kind: 'registered' } });
+  };
+
+  onLines(
+    socket,
+    (line) => {
+      let req: Request;
+      try {
+        req = RequestSchema.parse(JSON.parse(line));
+      } catch {
+        send({ id: 'unknown', type: 'error', error: 'invalid request' });
+        return;
+      }
+      if (req.cmd === 'actuator_register' || req.cmd === 'actuator_result') return actuatorCmd(req);
+      handle(rt, req, send, forwardApprovals, (fn) => cleanups.push(fn)).catch((e: Error) =>
+        send({ id: req.id, type: 'error', error: e.message }),
+      );
+    },
+    () => (actuator ? MAX_ACTUATOR_LINE : MAX_LINE),
+  );
 }
 
 async function handle(
@@ -119,6 +166,7 @@ async function handle(
         quotaWarning: rt.quotaWarning,
         quota: quotaView(rt),
         memoryNotes: rt.memory.notesDir,
+        actuator: rt.actuatorInfo(),
         tools: rt.gate.tools.map((t) => t.name),
       });
     }
@@ -340,6 +388,7 @@ function dashboardSnapshot(rt: Runtime) {
       session: session ? { id: session.id.slice(0, 8), tainted: session.tainted } : null,
       startedAt: new Date(rt.startedAt).toISOString(),
       quotaWarning: rt.quotaWarning,
+      actuator: rt.actuatorInfo(),
     },
     pendingApprovals: rt.approvals.pending().map(view),
     audit: rt.audit.query({ limit: 150 }),
