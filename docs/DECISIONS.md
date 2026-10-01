@@ -424,3 +424,68 @@ français choisi automatiquement, 13 400 caractères. Recherche YouTube : 1,9 s.
 
 **Risque résiduel.** Une page web piégée peut biaiser une synthèse, sans jamais pouvoir agir.
 Ouvrir une source citée passe par `url_open` (N2 en session teintée).
+
+## ADR-022 — Tableau de bord natif SwiftUI (remplace Tauri pour le HUD, S8 avancé)
+
+**Contexte.** Brightky veut un tableau de bord complet : voir chaque action, contrôler Jarvis, voir
+les prévisions. Avec Tauri (ADR du plan), il aurait fallu compiler des centaines de Mo de crates
+Rust, alors que la data est limitée.
+
+**Décision.**
+- Une seule app native **Jarvis.app** en SwiftUI (1,2 Mo, 0 Mo de téléchargement : SwiftUI et
+  Swift Charts sont dans macOS).
+- Elle regroupe :
+  - l'icône de barre de menus, qui change selon l'état (écoute, réflexion, parole, validation
+    attendue, STOP) ;
+  - un panneau rapide : activité, validations N2 en un clic, quota, STOP ;
+  - la fenêtre « tableau de bord » ;
+  - la voix push-to-talk.
+- Le **tableau de bord** compte 8 sections : vue d'ensemble, activité (journal filtrable, en
+  direct), validations (avec PIN pour N3), coûts et quota (graphique sur 30 jours, détail par
+  modèle), prévisions, mémoire, comptes et outils, réglages. La signature « fait avec ❤️ par
+  Brightky Efo'o » est présente.
+- **Daemon** :
+  - `dashboard` renvoie un instantané ;
+  - `watch` diffuse en direct les lignes d'audit, les validations, l'activité du cerveau, le quota
+    et STOP/reprise ;
+  - `audit_query` (historique) et `upcoming` (agenda) complètent l'API.
+- **Prévisions** :
+  - le quota est échantillonné à chaque `rate_limit_event`, et une tendance linéaire depuis la
+    dernière réinitialisation donne « saturé vers 16:40 » ou « OK jusqu'à la réinitialisation » ;
+  - on projette aussi le mois en équivalent API, et l'agenda à venir.
+- **Sécurité** : le tableau de bord est un client du socket comme la CLI, sur le canal `hud`
+  enregistré dans l'audit. Il ne débloque rien. Le PIN est accepté depuis le terminal et le
+  tableau de bord, jamais depuis la voix.
+- Les résumés d'actions (en anglais dans l'audit) sont traduits par une table commune
+  (`Wording`) à la voix et à l'interface.
+- **Vérification visuelle sans capture d'écran** : `--snapshot` dessine chaque section avec des
+  données de démo, depuis la propre hiérarchie de vues de l'app.
+- **Signature stable** : `apps/mac/signing-setup.sh` crée, une seule fois, une identité locale
+  dans un trousseau dédié. Les autorisations Micro et Reconnaissance vocale survivent alors aux
+  recompilations. Il faut le mot de passe de Brightky une fois, pour approuver le certificat.
+
+## ADR-023 — Accès aux forges et identité (décisions de Brightky, 01/10/2026)
+
+**Décisions de Brightky.**
+- **Périmètre** : Jarvis accède à **tous** ses dépôts GitHub **et** GitLab (152 dépôts GitHub
+  perso, plus les organisations `scriptify-cm` et `javascriptcm`), à **tous** les tableaux et
+  **toutes** les cartes Trello.
+- **PR** : Jarvis peut **ouvrir des PR sans demander** sur ses dépôts.
+- **Identité** : il agit **sous le nom de Brightky**. Les commits sont faits avec son identité git,
+  **sans `Co-Authored-By`** ni mention « Generated with Claude Code ». Hors de la machine,
+  Jarvis est Brightky. Cela tranche aussi le §9.7 : pas de mention « réponse assistée ».
+
+**Garde-fous maintenus dans le code**, non négociables :
+- jamais de merge automatique ;
+- jamais de push direct ou forcé sur `main`/`master` (N4) ;
+- les workers tournent en worktree isolé, avec un hook de politique injecté ;
+- token *fine-grained* sans droits d'administration ;
+- commenter et déplacer une carte restent N2, sauf règle d'auto-approbation explicite.
+
+**Pour les workers (S6)**, faits vérifiés dans la doc Claude Code :
+- `--settings '{"attribution": …}'` désactive l'attribution ;
+- un hook `PreToolUse` injecté via `--settings` s'applique dans tous les modes ;
+- ne **pas** utiliser `--bare`, qui ignore le token d'abonnement ;
+- `ANTHROPIC_API_KEY` doit être absent de l'environnement.
+
+Le format exact de `attribution` sera vérifié sur le binaire réel avant usage.

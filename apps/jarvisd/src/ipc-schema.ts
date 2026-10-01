@@ -26,7 +26,7 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
       id,
       cmd: z.literal('approve'),
       /** Where Brightky answered from; recorded in the audit log. */
-      channel: z.enum(['cli', 'voice']).optional(),
+      channel: z.enum(['cli', 'voice', 'hud']).optional(),
       approvalId: z.string().max(64),
       pin: z.string().max(32).optional(),
     })
@@ -36,10 +36,25 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
       id,
       cmd: z.literal('deny'),
       approvalId: z.string().max(64),
-      channel: z.enum(['cli', 'voice']).optional(),
+      channel: z.enum(['cli', 'voice', 'hud']).optional(),
     })
     .strict(),
   z.object({ id, cmd: z.literal('mail_status'), test: z.boolean().optional() }).strict(),
+  /** Dashboard: one snapshot to render, then `watch` for live events. */
+  z.object({ id, cmd: z.literal('dashboard') }).strict(),
+  z.object({ id, cmd: z.literal('watch') }).strict(),
+  z.object({ id, cmd: z.literal('upcoming') }).strict(),
+  z
+    .object({
+      id,
+      cmd: z.literal('audit_query'),
+      limit: z.number().int().min(1).max(500).optional(),
+      beforeSeq: z.number().int().positive().optional(),
+      tool: z.string().max(60).optional(),
+      event: z.enum(['intent', 'result', 'approval', 'llm', 'system']).optional(),
+      verdict: z.string().max(30).optional(),
+    })
+    .strict(),
   z
     .object({
       id,

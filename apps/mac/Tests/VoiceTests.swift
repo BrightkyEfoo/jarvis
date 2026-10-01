@@ -72,6 +72,10 @@ enum VoiceTests {
                 == "Envoyer depuis perso à paul@client.cm, objet « Devis » : Je valide.", "summary spoken in French",
               Confirmation.spoken("Send from perso to paul@client.cm — \"Devis\": Je valide.", lang: "fr"))
         check(Confirmation.spoken("Run: uname -s", lang: "en") == "Run: uname -s", "English summary unchanged")
+        check(Wording.fr("Draft (perso) to paul@client.cm — \"Devis\"") == "Brouillon (perso) pour paul@client.cm — « Devis »", "draft summary in French")
+        check(Wording.fr("Open Visual Studio Code on ~/w/CodeVault") == "Ouvrir Visual Studio Code sur ~/w/CodeVault", "open on")
+        check(Wording.fr("Read mail perso#m1") == "Lire le mail perso#m1", "read mail before read")
+        check(Wording.fr("Triage mail all accounts (24 h)") == "Tri des mails : tous les comptes (24 h)", "triage", Wording.fr("Triage mail all accounts (24 h)"))
 
         print(failures == 0 ? "✔ \(passed) voice tests passed" : "✖ \(failures) failed, \(passed) passed")
         exit(failures == 0 ? 0 : 1)

@@ -1,0 +1,50 @@
+import Foundation
+
+/// Tool summaries are written in English for the audit log. This turns them into French for the
+/// dashboard and the voice. Specific patterns come before general ones.
+enum Wording {
+    private static let rules: [(String, String)] = [
+        (#"^Send from (\S+) to (\S+) — "([^"]*)":"#, "Envoyer depuis $1 à $2, objet « $3 » :"),
+        (#"^Send from (\S+) to (\S+) — "([^"]*)"$"#, "Envoyer depuis $1 à $2, objet « $3 »"),
+        (#"^Send to (\S+) — "([^"]*)":"#, "Envoyer à $1, objet « $2 » :"),
+        (#"^Send draft (\S+) from (\S+)"#, "Envoyer le brouillon $1 depuis $2"),
+        (#"^Draft \((\S+)\) to (\S+) — "([^"]*)""#, "Brouillon ($1) pour $2 — « $3 »"),
+        (#"^Morning briefing$"#, "Briefing du matin"),
+        (#"^Web research \(quick\): "#, "Recherche web (rapide) : "),
+        (#"^Web research \(deep\): "#, "Recherche web (approfondie) : "),
+        (#"^YouTube search: "#, "Recherche YouTube : "),
+        (#"^Watch video "#, "Regarder la vidéo "),
+        (#"^Triage mail (.+) \((\d+) h\)"#, "Tri des mails : $1 ($2 h)"),
+        (#"^Read mail "#, "Lire le mail "),
+        (#"^Read calendar \(today\)"#, "Agenda du jour"),
+        (#"^Read calendar \(tomorrow\)"#, "Agenda de demain"),
+        (#"^Read calendar \(week\)"#, "Agenda de la semaine"),
+        (#"^Read the clock$"#, "Lire l'heure"),
+        (#"^Read system status$"#, "État du Mac"),
+        (#"^List open apps$"#, "Apps ouvertes"),
+        (#"^List shortcuts$"#, "Raccourcis disponibles"),
+        (#"^List projects"#, "Lister les projets"),
+        (#"^List "#, "Lister "),
+        (#"^Read "#, "Lire "),
+        (#"^Write (\d+) chars to "#, "Écrire $1 caractères dans "),
+        (#"^Append (\d+) chars to "#, "Ajouter $1 caractères à "),
+        (#"^Search memory for "#, "Chercher en mémoire : "),
+        (#"^Forget memory "#, "Oublier le souvenir "),
+        (#"^Remember \[(\w+)\]: "#, "Retenir : "),
+        (#"^Open (.+) on (.+)$"#, "Ouvrir $1 sur $2"),
+        (#"^Open "#, "Ouvrir "),
+        (#"^Run shortcut "#, "Lancer le raccourci "),
+        (#"^Run: "#, "Exécuter : "),
+        (#"^Move to Trash: "#, "Mettre à la corbeille : "),
+        (#"\(content not verified by Jarvis\)"#, "(contenu non vérifié par Jarvis)"),
+        (#"all accounts"#, "tous les comptes"),
+    ]
+
+    static func fr(_ summary: String) -> String {
+        var s = summary
+        for (pattern, template) in rules {
+            s = s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
+        return s
+    }
+}

@@ -217,8 +217,8 @@ async function voiceCommand(args: string[]): Promise<void> {
   const { existsSync, mkdirSync } = await import('node:fs');
   const { join, resolve } = await import('node:path');
   const { homedir, tmpdir } = await import('node:os');
-  const dir = resolve(import.meta.dirname, '../../voice');
-  const app = join(dir, 'build', 'Jarvis Voice.app');
+  const dir = resolve(import.meta.dirname, '../../mac');
+  const app = join(dir, 'build', 'Jarvis.app');
   const [sub] = args;
 
   if (sub === 'test') return void execFileSync(join(dir, 'test.sh'), { stdio: 'inherit' });
@@ -255,7 +255,7 @@ async function voiceCommand(args: string[]): Promise<void> {
   }
   const child = spawn('/usr/bin/open', openArgs, { stdio: 'inherit' });
   process.on('SIGINT', () => {
-    spawn('/usr/bin/pkill', ['-x', 'jarvis-voice']);
+    spawn('/usr/bin/pkill', ['-x', 'jarvis-app']);
   });
   await new Promise((r) => child.on('exit', r));
 }
@@ -270,7 +270,7 @@ async function serviceCommand(args: string[]): Promise<void> {
 
   if (sub === 'install') {
     const dev = args.includes('--dev');
-    const voice = args.includes('--voice');
+    const voice = args.includes('--app') || args.includes('--voice');
     if (!dev && !existsSync(SEALED_POLICY_PATH)) {
       console.error(
         red(
@@ -281,7 +281,7 @@ async function serviceCommand(args: string[]): Promise<void> {
       return;
     }
     if (voice && !existsSync(p.voiceBinary)) {
-      console.error(red('✖ app vocale non compilée : jarvis voice build'));
+      console.error(red('✖ Jarvis.app non compilée : jarvis voice build'));
       process.exitCode = 1;
       return;
     }
@@ -374,6 +374,20 @@ async function mailCommand(args: string[]): Promise<void> {
   });
 }
 
+/** Opens the dashboard window of Jarvis.app (launching the app if needed). */
+async function dashboardCommand(): Promise<void> {
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync } = await import('node:fs');
+  const { join, resolve } = await import('node:path');
+  const dir = resolve(import.meta.dirname, '../../mac');
+  const app = join(dir, 'build', 'Jarvis.app');
+  if (!existsSync(app)) execFileSync(join(dir, 'build.sh'), { stdio: 'inherit' });
+  execFileSync('/usr/bin/open', [app]);
+  await new Promise((r) => setTimeout(r, 800));
+  execFileSync('/usr/bin/open', ['jarvis://dashboard']);
+  console.log('Tableau de bord ouvert (icône J dans la barre de menus).');
+}
+
 async function memoryCommand(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   type FactView = { id: number; kind: string; text: string; source: string };
@@ -437,7 +451,8 @@ const HELP = `jarvis — assistant de Brightky
   jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
   jarvis google connect <client.json> [compte]  connecter Gmail + Agenda (OAuth)
   jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
-  jarvis service install [--dev] [--voice] | uninstall | status | logs   démarrage auto (launchd)
+  jarvis service install [--dev] [--app] | uninstall | status | logs   démarrage auto (launchd)
+  jarvis dashboard             tableau de bord (activité, validations, coûts, prévisions…)
   jarvis voice [build|test|selftest]  voix push-to-talk (maintiens ⌥Espace), 100 % locale
   jarvis audit tail [n]        dernières entrées du journal
   jarvis audit verify          vérifier la chaîne de hash du journal
@@ -617,7 +632,10 @@ async function main(argv: string[]): Promise<void> {
     case 'memory':
       return memoryCommand(rest);
     case 'voice':
+    case 'app':
       return voiceCommand(rest);
+    case 'dashboard':
+      return dashboardCommand();
     case 'google':
       return googleCommand(rest);
     case 'service':

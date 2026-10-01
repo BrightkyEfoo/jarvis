@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path';
  */
 
 export const DAEMON_LABEL = 'cm.brightkyefoo.jarvisd';
-export const VOICE_LABEL = 'cm.brightkyefoo.jarvis.voice';
+export const VOICE_LABEL = 'cm.brightkyefoo.jarvis.app';
 
 export interface AgentSpec {
   label: string;
@@ -74,7 +74,7 @@ export function servicePaths(): ServicePaths {
     cli: resolve(import.meta.dirname, 'cli.ts'),
     voiceBinary: resolve(
       import.meta.dirname,
-      '../../voice/build/Jarvis Voice.app/Contents/MacOS/jarvis-voice',
+      '../../mac/build/Jarvis.app/Contents/MacOS/jarvis-app',
     ),
   };
 }

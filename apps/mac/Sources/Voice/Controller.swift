@@ -5,14 +5,19 @@ import Speech
 /// Push-to-talk loop: hold the hotkey → listen → release → transcribe → ask jarvisd → speak each
 /// sentence as it streams. Pressing again while Jarvis talks or thinks interrupts it (barge-in).
 final class Controller {
-    enum State { case idle, listening, transcribing, thinking, speaking, confirming }
+    enum State: String { case idle, listening, transcribing, thinking, speaking, confirming }
+
+    /// Reported to the menu bar icon and the dashboard.
+    var onState: (String) -> Void = { _ in }
 
     private let config: VoiceConfig
     private let listener = Listener()
     private let speaker: Speaker
     private let client: JarvisClient
     private var hotKey: HotKey?
-    private var state = State.idle
+    private var state = State.idle {
+        didSet { if state != oldValue { onState(state.rawValue) } }
+    }
     private var chunker = SpeechChunker()
     private var currentAsk: String?
     private var lang = "fr"

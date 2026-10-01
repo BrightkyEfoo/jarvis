@@ -1,24 +1,78 @@
 import AppKit
 import Speech
+import SwiftUI
 
+/// Jarvis.app: menu bar icon + dashboard window + push-to-talk voice, one process, one identity
+/// for the Microphone / Speech permissions.
 @main
-enum JarvisVoice {
-    static var controller: Controller?
+struct JarvisApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
-    static func main() {
-        signal(SIGPIPE, SIG_IGN) // a restarting daemon must not kill the voice app
+    var body: some Scene {
+        MenuBarExtra {
+            MenuView().environmentObject(delegate.store)
+        } label: {
+            StatusIcon(store: delegate.store) { delegate.openWindow = $0 }
+        }
+        .menuBarExtraStyle(.window)
+
+        Window("Jarvis", id: "dashboard") {
+            DashboardView().environmentObject(delegate.store)
+        }
+        .defaultSize(width: 1180, height: 760)
+        .defaultLaunchBehavior(.suppressed)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let config = VoiceConfig.load()
+    lazy var store = Store(socketPath: config.socketPath)
+    var controller: Controller?
+    var openWindow: OpenWindowAction?
+    private var pendingDashboard = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        signal(SIGPIPE, SIG_IGN) // a restarting daemon must not kill the app
         setvbuf(stdout, nil, _IOLBF, 0)
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
-        let config = VoiceConfig.load()
+        NSApp.setActivationPolicy(.accessory)
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--selftest") {
             SelfTest.run(config: config, files: Array(args[(i + 1)...]))
-        } else {
-            controller = Controller(config: config)
-            controller?.start()
+            return
         }
-        app.run()
+        if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
+            Snapshotter.run(directory: args[i + 1])
+            return
+        }
+        store.start()
+        if !args.contains("--no-voice") {
+            let c = Controller(config: config)
+            c.onState = { [weak self] s in self?.store.voice = Store.VoiceState(rawValue: s) ?? .idle }
+            c.start()
+            controller = c
+        }
+        if args.contains("--dashboard") { openDashboard() }
+    }
+
+    /// `open jarvis://dashboard` (used by `jarvis dashboard`).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if urls.contains(where: { $0.host == "dashboard" }) { openDashboard() }
+    }
+
+    func openDashboard() {
+        guard let openWindow else {
+            // The menu bar label has not appeared yet: retry shortly.
+            if !pendingDashboard {
+                pendingDashboard = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.pendingDashboard = false
+                    self?.openDashboard()
+                }
+            }
+            return
+        }
+        openWindow(id: "dashboard")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

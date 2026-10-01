@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0 — Tableau de bord Jarvis.app (S8 avancé) (01/10/2026)
+
+### Ajouté
+- **Jarvis.app** (SwiftUI natif, 1,2 Mo) : icône de barre de menus et panneau rapide, tableau de
+  bord en 8 sections (vue d'ensemble, activité, validations, coûts et quota, prévisions,
+  mémoire, comptes, réglages), voix intégrée.
+- **Daemon** : `dashboard` (instantané), `watch` (événements en direct), `audit_query`,
+  `upcoming` ; canal de validation `hud` ; échantillons de quota et prévisions de saturation ;
+  consommation par jour.
+- L'audit inclut désormais le résumé de l'action dans les lignes « résultat » et
+  « validation », et la raison dans les refus.
+- **CLI** : `jarvis dashboard`, `jarvis service install --app`.
+- `apps/mac/signing-setup.sh` : signature locale stable, donc plus de permissions redemandées à
+  chaque compilation.
+- `--snapshot` : rendu des écrans avec des données de démo, pour la revue visuelle.
+- **Tests** : 5 tests e2e du tableau de bord (instantané, flux en direct, historique filtré,
+  prévisions) et 4 tests de libellés.
+
+### Modifié
+- `apps/voice` devient `apps/mac` (Jarvis.app, bundle `cm.brightkyefoo.jarvis`, macOS 15+).
+- Les résumés d'actions sont traduits en français par une table commune à la voix et à
+  l'interface.
+
 ## 0.5.0 — Recherche web et YouTube, avancées depuis le S13 (01/10/2026)
 
 ### Ajouté

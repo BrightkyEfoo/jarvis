@@ -13,6 +13,7 @@ export type Reply =
       approved: boolean;
       channel: string;
     }
+  | { id: string; type: 'event'; event: unknown }
   | { id: string; type: 'done'; data?: unknown }
   | { id: string; type: 'error'; error: string };
 

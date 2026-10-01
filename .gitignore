@@ -14,4 +14,4 @@ outbox/
 .env.*
 *.pem
 *.key
-apps/voice/build/
+apps/mac/build/

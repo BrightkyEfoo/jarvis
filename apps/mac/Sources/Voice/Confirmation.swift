@@ -26,25 +26,8 @@ enum Confirmation: Equatable {
         return .unclear
     }
 
-    /// Tool summaries are written in English for the audit log; this makes them speakable in French.
+    /// Speakable summary (French via the shared wording table).
     static func spoken(_ summary: String, lang: String) -> String {
-        guard lang == "fr" else { return summary }
-        let rules: [(String, String)] = [
-            (#"^Send from (\S+) to (\S+) — "([^"]*)":"#, "Envoyer depuis $1 à $2, objet « $3 » :"),
-            (#"^Send to (\S+) — "([^"]*)":"#, "Envoyer à $1, objet « $2 » :"),
-            (#"^Send draft (\S+) from (\S+)"#, "Envoyer le brouillon $1 depuis $2"),
-            (#"^Open (.+) on (.+)$"#, "Ouvrir $1 sur $2"),
-            (#"^Open "#, "Ouvrir "),
-            (#"^Run: "#, "Exécuter : "),
-            (#"^Move to Trash: "#, "Mettre à la corbeille : "),
-            (#"^Remember \[(\w+)\]: "#, "Retenir : "),
-            (#"^Run shortcut "#, "Lancer le raccourci "),
-            (#"\(content not verified by Jarvis\)"#, "(contenu non vérifié par Jarvis)"),
-        ]
-        var s = summary
-        for (pattern, template) in rules {
-            s = s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
-        }
-        return s
+        lang == "fr" ? Wording.fr(summary) : summary
     }
 }

@@ -29,6 +29,19 @@ export interface UsageRecord {
   durationMs: number | null;
 }
 
+export interface QuotaForecast {
+  window: string;
+  utilization: number;
+  resetsAt: string | null;
+  /** When the window would be full at the current pace (null: not before the reset). */
+  fullAt: string | null;
+  /** Utilization points per hour (0..1 scale). */
+  perHour: number;
+}
+
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export interface UsageSummary {
   since: string;
   turns: number;
@@ -74,6 +87,14 @@ CREATE TABLE IF NOT EXISTS usage (
   duration_ms REAL
 );
 CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
+CREATE TABLE IF NOT EXISTS quota_samples (
+  ts TEXT NOT NULL,
+  window TEXT NOT NULL,
+  utilization REAL,
+  status TEXT NOT NULL,
+  resets_at TEXT
+);
+CREATE INDEX IF NOT EXISTS quota_ts ON quota_samples(window, ts);
 `;
 
 const NOTE_TEMPLATES: Record<string, string> = {
@@ -253,6 +274,87 @@ export class Memory {
       u.ttftMs,
       u.durationMs,
     );
+  }
+
+  recordQuota(
+    window: string,
+    utilization: number | null,
+    status: string,
+    resetsAt: Date | null,
+    at = new Date(),
+  ): void {
+    this.#db
+      .prepare(
+        'INSERT INTO quota_samples (ts, window, utilization, status, resets_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(at.toISOString(), window, utilization, status, resetsAt?.toISOString() ?? null);
+  }
+
+  /**
+   * Linear trend of a subscription window since its last reset: when will it be full?
+   * Null when there is not enough data or usage is flat.
+   */
+  quotaForecast(window: string, now = new Date()): QuotaForecast | null {
+    const rows = this.#db
+      .prepare(
+        'SELECT ts, utilization, resets_at FROM quota_samples WHERE window = ? AND ts >= ? AND utilization IS NOT NULL ORDER BY ts',
+      )
+      .all(window, new Date(now.getTime() - 5 * 3_600_000).toISOString()) as {
+      ts: string;
+      utilization: number;
+      resets_at: string | null;
+    }[];
+    const last = rows.at(-1);
+    if (!last) return null;
+    // Only samples of the current window (after a reset, utilization drops).
+    let start = rows.length - 1;
+    while (start > 0 && (rows[start - 1]?.utilization ?? 0) <= (rows[start]?.utilization ?? 0))
+      start--;
+    const cur = rows.slice(start);
+    const resetsAt = last.resets_at ? new Date(last.resets_at) : null;
+    const base: QuotaForecast = {
+      window,
+      utilization: last.utilization,
+      resetsAt: last.resets_at,
+      fullAt: null,
+      perHour: 0,
+    };
+    const first = cur[0];
+    if (!first || cur.length < 2) return base;
+    const hours = (Date.parse(last.ts) - Date.parse(first.ts)) / 3_600_000;
+    const perHour = hours > 0 ? (last.utilization - first.utilization) / hours : 0;
+    if (perHour <= 0) return { ...base, perHour: 0 };
+    const fullAt = new Date(Date.parse(last.ts) + ((1 - last.utilization) / perHour) * 3_600_000);
+    return {
+      ...base,
+      perHour,
+      fullAt: resetsAt && fullAt > resetsAt ? null : fullAt.toISOString(),
+    };
+  }
+
+  /** Cost-equivalent and turns per local day, oldest first (for charts). */
+  usageDaily(days: number, now = new Date()): { day: string; turns: number; costUsd: number }[] {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+    const rows = this.#db
+      .prepare('SELECT ts, cost_usd FROM usage WHERE ts >= ?')
+      .all(start.toISOString()) as { ts: string; cost_usd: number }[];
+    const byDay = new Map<string, { turns: number; costUsd: number }>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      byDay.set(localDay(d), { turns: 0, costUsd: 0 });
+    }
+    for (const r of rows) {
+      const k = localDay(new Date(r.ts));
+      const v = byDay.get(k);
+      if (v) {
+        v.turns += 1;
+        v.costUsd += r.cost_usd;
+      }
+    }
+    return [...byDay.entries()].map(([day, v]) => ({ day, ...v }));
   }
 
   usageSummary(since: Date): UsageSummary {

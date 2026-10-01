@@ -119,6 +119,20 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 - **Données externes** : tout ce qui vient du web est encadré et teinte la session (N2 toujours
   confirmé, N3 refusé, liens externes en N2).
 
+## Tableau de bord
+
+- **Accès** : c'est un client du socket comme la CLI (socket en 0600). Il passe par les mêmes
+  commandes et les mêmes contrôles, sur le canal `hud`, qui est journalisé.
+- **Ce qu'il permet** :
+  - STOP ;
+  - la reprise et les validations N3 **avec le PIN** ;
+  - les validations N2 en un clic.
+
+  Il ne peut **pas** modifier la politique : elle reste scellée et root.
+- **Signature locale** : le trousseau dédié `signing/` contient seulement une identité de
+  signature auto-signée, qui sert à stabiliser l'identité TCC de l'app. Son mot de passe est
+  aléatoire, et ce n'est pas celui de Brightky.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

@@ -9,7 +9,7 @@ const paths = {
   agentsDir: '/a',
   logsDir: '/Users/b/Library/Logs/Jarvis',
   cli: '/repo/apps/jarvisd/src/cli.ts',
-  voiceBinary: '/repo/voice/Jarvis Voice.app/Contents/MacOS/jarvis-voice',
+  voiceBinary: '/repo/mac/Jarvis.app/Contents/MacOS/jarvis-app',
 };
 
 describe('launchd agents', () => {

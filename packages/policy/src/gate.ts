@@ -147,6 +147,7 @@ export class Gate {
         rule: cls.rule,
         verdict,
         outcome: 'refused',
+        data: { reason: cls.reason },
       });
       const content = `Action refused (${levelName(cls.level)}, rule ${cls.rule}): ${cls.reason}`;
       return decision
@@ -209,7 +210,7 @@ export class Gate {
         level: decision.level,
         approval: outcome.channel,
         outcome: outcome.approved ? 'approved' : 'refused',
-        data: { reason: outcome.reason },
+        data: { reason: outcome.reason, summary },
       });
       if (!outcome.approved) {
         return refuse(
@@ -236,7 +237,7 @@ export class Gate {
         rule: decision.rule,
         outcome: 'error',
         durationMs: performance.now() - t0,
-        data: { error: message },
+        data: { error: message, summary },
       });
       return { ok: false, content: `Tool error: ${message}`, actionId, decision };
     }
@@ -256,7 +257,7 @@ export class Gate {
       rule: decision.rule,
       outcome: 'ok',
       durationMs: performance.now() - t0,
-      data: { chars: content.length, autoApproved: decision.autoApproved },
+      data: { chars: content.length, autoApproved: decision.autoApproved, summary },
     });
     return { ok: true, content, actionId, decision };
   }

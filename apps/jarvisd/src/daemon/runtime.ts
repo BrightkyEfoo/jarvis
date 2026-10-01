@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { AuditLog } from '@jarvis/audit';
 import {
@@ -68,6 +69,14 @@ export interface RuntimeOptions {
   /** Tests inject a fake research agent and YouTube access. */
   research?: { researcher: Researcher | null; youtube: YouTube | null };
 }
+
+export type Activity =
+  | { kind: 'turn_start'; trigger: string; preview: string }
+  | { kind: 'tool'; name: string }
+  | { kind: 'turn_end'; ok: boolean; model?: string; costUsd?: number; ttftMs?: number }
+  | { kind: 'quota'; window: string; utilization: number | null; status: string }
+  | { kind: 'stop'; reason: string }
+  | { kind: 'resume' };
 
 export interface AccountStatus {
   id: string;
@@ -149,7 +158,14 @@ export interface Runtime {
   pin: PinGuard;
   gate: Gate;
   memory: Memory;
-  mail: { providers: Map<string, MailProvider>; status: AccountStatus[] };
+  mail: {
+    providers: Map<string, MailProvider>;
+    status: AccountStatus[];
+    calendar: CalendarProvider | null;
+  };
+  /** Live activity for the dashboard: turns, tools, quota. */
+  events: EventEmitter<{ activity: [Activity] }>;
+  startedAt: number;
   /** Latest subscription window states (five_hour, seven_day, seven_day_opus…). */
   quota: Map<string, RateLimitInfo>;
   /** Null when no subscription token is stored yet (`jarvis auth set-token`). */
@@ -287,7 +303,9 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     pin,
     gate,
     memory,
-    mail: { providers: built.providers, status: built.status },
+    mail: { providers: built.providers, status: built.status, calendar: built.calendar },
+    events: new EventEmitter<{ activity: [Activity] }>(),
+    startedAt: Date.now(),
     quota,
     brain: null,
     devMode: o.devMode,
@@ -327,7 +345,21 @@ export function createRuntime(o: RuntimeOptions): Runtime {
           durationMs: t.durationMs,
         }),
       onRateLimit: (info) => {
-        if (info.rateLimitType) quota.set(info.rateLimitType, info);
+        if (info.rateLimitType) {
+          quota.set(info.rateLimitType, info);
+          memory.recordQuota(
+            info.rateLimitType,
+            info.utilization ?? null,
+            info.status,
+            info.resetsAt ? new Date(info.resetsAt * 1000) : null,
+          );
+          rt.events.emit('activity', {
+            kind: 'quota',
+            window: info.rateLimitType,
+            utilization: info.utilization ?? null,
+            status: info.status,
+          });
+        }
         const a = quotaAction(info);
         if (a.warn) rt.quotaWarning = a.warn;
         audit.append({
@@ -347,8 +379,10 @@ export function createRuntime(o: RuntimeOptions): Runtime {
 
   killswitch.onEngage((reason) => {
     audit.append({ event: 'system', outcome: 'stop', data: { reason } });
+    rt.events.emit('activity', { kind: 'stop', reason });
     void rt.brain?.stop(reason);
   });
+  killswitch.onRelease(() => rt.events.emit('activity', { kind: 'resume' }));
 
   audit.append({
     event: 'system',

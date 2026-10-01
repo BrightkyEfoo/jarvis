@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import type { ApprovalOutcome, ApprovalRequest } from '@jarvis/policy';
 import { type ApprovalView, onLines, type Reply, writeLine } from '../ipc.ts';
 import { type Request, RequestSchema } from '../ipc-schema.ts';
-import type { Runtime } from './runtime.ts';
+import type { Activity, Runtime } from './runtime.ts';
 
 const view = (r: ApprovalRequest): ApprovalView => ({
   id: r.id,
@@ -86,7 +86,7 @@ function serve(rt: Runtime, socket: Socket): void {
       send({ id: 'unknown', type: 'error', error: 'invalid request' });
       return;
     }
-    handle(rt, req, send, forwardApprovals).catch((e: Error) =>
+    handle(rt, req, send, forwardApprovals, (fn) => cleanups.push(fn)).catch((e: Error) =>
       send({ id: req.id, type: 'error', error: e.message }),
     );
   });
@@ -97,6 +97,7 @@ async function handle(
   req: Request,
   send: (r: Reply) => void,
   forwardApprovals: (id: string) => () => void,
+  onClose: (fn: () => void) => void,
 ): Promise<void> {
   const done = (data?: unknown) =>
     send(data === undefined ? { id: req.id, type: 'done' } : { id: req.id, type: 'done', data });
@@ -126,20 +127,79 @@ async function handle(
       if (!rt.brain)
         return fail('no Claude subscription token stored: run `jarvis auth set-token`');
       const off = forwardApprovals(req.id);
+      const trigger = req.trigger ?? 'cli';
+      rt.events.emit('activity', { kind: 'turn_start', trigger, preview: req.text.slice(0, 120) });
+      let r: Awaited<ReturnType<NonNullable<Runtime['brain']>['ask']>> | undefined;
       try {
-        const r = await rt.brain.ask(
+        r = await rt.brain.ask(
           req.text,
           {
             onText: (text) => send({ id: req.id, type: 'text', text }),
-            onTool: (name) => send({ id: req.id, type: 'tool', name }),
+            onTool: (name) => {
+              send({ id: req.id, type: 'tool', name });
+              rt.events.emit('activity', { kind: 'tool', name: name.replace('mcp__jarvis__', '') });
+            },
           },
-          req.trigger ?? 'cli',
+          trigger,
         );
         return done({ ...r, quota: quotaView(rt) });
       } finally {
         off();
+        rt.events.emit('activity', {
+          kind: 'turn_end',
+          ok: r?.ok ?? false,
+          ...(r?.model ? { model: r.model } : {}),
+          ...(r?.costUsd !== undefined ? { costUsd: r.costUsd } : {}),
+          ...(r?.ttftMs !== undefined ? { ttftMs: r.ttftMs } : {}),
+        });
       }
     }
+
+    case 'dashboard':
+      return done(dashboardSnapshot(rt));
+
+    case 'watch': {
+      // Live feed until the client disconnects: audit rows, approvals, STOP, activity.
+      const offAudit = rt.audit.onAppend((record) =>
+        send({ id: req.id, type: 'event', event: { kind: 'audit', record } }),
+      );
+      const onActivity = (a: Activity) =>
+        send({ id: req.id, type: 'event', event: { kind: 'activity', activity: a } });
+      rt.events.on('activity', onActivity);
+      const offApprovals = forwardApprovals(req.id);
+      onClose(() => {
+        offAudit();
+        rt.events.off('activity', onActivity);
+        offApprovals();
+      });
+      send({ id: req.id, type: 'event', event: { kind: 'hello', at: new Date().toISOString() } });
+      return;
+    }
+
+    case 'upcoming': {
+      const cal = rt.mail.calendar;
+      if (!cal) return done({ events: [], note: 'agenda non connecté' });
+      const from = new Date();
+      const to = new Date(from);
+      to.setDate(to.getDate() + 2);
+      to.setHours(0, 0, 0, 0);
+      try {
+        return done({ events: await cal.events(from, to, 20) });
+      } catch (e) {
+        return done({ events: [], note: (e as Error).message });
+      }
+    }
+
+    case 'audit_query':
+      return done(
+        rt.audit.query({
+          limit: req.limit ?? 100,
+          ...(req.beforeSeq ? { beforeSeq: req.beforeSeq } : {}),
+          ...(req.tool ? { tool: req.tool } : {}),
+          ...(req.event ? { event: req.event } : {}),
+          ...(req.verdict ? { verdict: req.verdict } : {}),
+        }),
+      );
 
     case 'interrupt':
       await rt.brain?.interrupt();
@@ -187,7 +247,7 @@ async function handle(
       const r = rt.approvals.resolve(req.approvalId, {
         approve: true,
         channel,
-        ...(req.pin && channel === 'cli' ? { pin: req.pin } : {}),
+        ...(req.pin && channel !== 'voice' ? { pin: req.pin } : {}),
       });
       return r.ok ? done() : fail(r.error);
     }
@@ -257,4 +317,52 @@ function quotaView(rt: Runtime): Record<string, number | string> {
     out[window] = info.utilization !== undefined ? Math.round(info.utilization * 100) : info.status;
   }
   return out;
+}
+
+/** Everything the dashboard needs to render at once; live updates then come from `watch`. */
+function dashboardSnapshot(rt: Runtime) {
+  const now = new Date();
+  const day = new Date(now);
+  day.setHours(0, 0, 0, 0);
+  const week = new Date(day);
+  week.setDate(week.getDate() - 6);
+  const month = new Date(day);
+  month.setDate(1);
+  const monthSoFar = rt.memory.usageSummary(month);
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const session = rt.brain?.session;
+  return {
+    status: {
+      stop: rt.killswitch.engaged ? rt.killswitch.reason : null,
+      devMode: rt.devMode,
+      policy: { sha256: rt.policy.sha256.slice(0, 12), sealed: rt.policy.sealed },
+      brain: rt.brain ? 'ready' : 'no_token',
+      session: session ? { id: session.id.slice(0, 8), tainted: session.tainted } : null,
+      startedAt: new Date(rt.startedAt).toISOString(),
+      quotaWarning: rt.quotaWarning,
+    },
+    pendingApprovals: rt.approvals.pending().map(view),
+    audit: rt.audit.query({ limit: 150 }),
+    costs: {
+      today: rt.memory.usageSummary(day),
+      week: rt.memory.usageSummary(week),
+      month: monthSoFar,
+    },
+    daily: rt.memory.usageDaily(30, now),
+    quota: [...rt.quota.entries()].map(([window, info]) => ({
+      window,
+      utilization: info.utilization ?? null,
+      status: info.status,
+      resetsAt: info.resetsAt ? new Date(info.resetsAt * 1000).toISOString() : null,
+      forecast: rt.memory.quotaForecast(window, now),
+    })),
+    forecast: {
+      monthCostUsd: (monthSoFar.costUsd / now.getDate()) * daysInMonth,
+      turnsPerDay: monthSoFar.turns / now.getDate(),
+    },
+    mail: rt.mail.status,
+    memory: { facts: rt.memory.list(100), notesDir: rt.memory.notesDir },
+    tools: rt.gate.tools.map((t) => ({ name: t.name, description: t.description })),
+    signature: "fait avec ❤️ par Brightky Efo'o — https://brightkyefoo.cm",
+  };
 }

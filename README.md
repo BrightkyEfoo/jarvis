@@ -9,7 +9,8 @@ les secrets, les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteu
 répond à la voix (push-to-talk, 100 % local) en français et en anglais, lit Gmail, IMAP et
 l'agenda via un lecteur en quarantaine, fait le briefing du matin, rédige des brouillons et ne les
 envoie qu'après ton « oui ». Il fait aussi des recherches web sourcées et résume des vidéos YouTube
-à partir de leurs sous-titres. Il tourne en service launchd.
+à partir de leurs sous-titres. Un tableau de bord natif (barre de menus) montre tout ce qu'il fait
+et permet de le contrôler. Il tourne en service launchd.
 
 ## Ce qui est garanti par le code
 - Niveaux **N0 à N4**. Les actions interdites (N4) sont bloquées dans le code et ne peuvent pas être
@@ -54,7 +55,7 @@ ops/scripts/seal-policy.sh config/policy.example.yaml   # demande sudo pour la c
 jarvis daemon                  # policy scellée (production)
 jarvis daemon --dev            # policy du repo non scellée ; N3 désactivé
 
-jarvis service install --voice   # jarvisd + voix au démarrage de la session (launchd)
+jarvis service install --app     # jarvisd + Jarvis.app (voix + tableau de bord) au démarrage
 jarvis "qu'est-ce qui m'attend aujourd'hui ?"   # briefing : agenda + mails triés
 jarvis "réponds à Paul que je valide le devis"  # brouillon → tu confirmes → envoyé
 jarvis "compare Tauri et Electron pour notre HUD"   # recherche web sourcée
@@ -64,6 +65,7 @@ jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "plan the next sprint"   # Opus pour la planification, Sonnet sinon ; FR ou EN
 jarvis costs week              # consommation (équivalent API) et quota de l'abonnement
 jarvis memory                  # ce que Jarvis retient · `jarvis memory notes` pour tes notes
+jarvis dashboard               # tableau de bord : activité, validations, coûts, prévisions
 jarvis voice                   # maintiens ⌥Espace et parle ; réappuie pour couper la parole
 jarvis voice selftest          # vérifie la reconnaissance FR/EN et la voix, sans micro
 jarvis stop                    # STOP : tout s'arrête
@@ -84,7 +86,7 @@ pnpm perf      # budgets : evaluate < 1 ms, gate < 2 ms, IPC < 5 ms, démarrage 
 
 Arborescence :
 - `apps/jarvisd` : daemon, orchestrateur, outils, CLI ;
-- `apps/voice` : app vocale native Swift (push-to-talk) ;
+- `apps/mac` : Jarvis.app native Swift (barre de menus, tableau de bord, voix push-to-talk) ;
 - `packages/policy` : permissions, gate, shell ;
 - `packages/audit` : journal ;
 - `packages/secrets` : Trousseau et rédaction ;

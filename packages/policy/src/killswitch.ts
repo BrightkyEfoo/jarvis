@@ -12,6 +12,7 @@ export class StopError extends Error {
 export class KillSwitch {
   readonly #flagPath: string;
   readonly #listeners = new Set<(reason: string) => void>();
+  readonly #releaseListeners = new Set<() => void>();
   #controller = new AbortController();
   #reason: string | null = null;
 
@@ -57,6 +58,18 @@ export class KillSwitch {
     rmSync(this.#flagPath, { force: true });
     this.#reason = null;
     this.#controller = new AbortController();
+    for (const fn of this.#releaseListeners) {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  onRelease(fn: () => void): () => void {
+    this.#releaseListeners.add(fn);
+    return () => this.#releaseListeners.delete(fn);
   }
 
   onEngage(fn: (reason: string) => void): () => void {

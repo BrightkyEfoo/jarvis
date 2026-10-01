@@ -142,6 +142,7 @@ export class AuditLog {
   readonly #db: Database.Database;
   readonly #insert: Database.Statement<Columns & { hash: string }>;
   readonly #jsonlFd: number | null;
+  readonly #listeners = new Set<(r: AuditRecord) => void>();
   #lastHash: string;
 
   constructor(opts: AuditLogOptions) {
@@ -186,7 +187,50 @@ export class AuditLog {
     this.#lastHash = hash;
     const record = toRecord({ ...cols, seq: Number(info.lastInsertRowid), hash });
     if (this.#jsonlFd !== null) writeSync(this.#jsonlFd, `${JSON.stringify(record)}\n`);
+    for (const fn of this.#listeners) {
+      try {
+        fn(record);
+      } catch {
+        // a dashboard listener must never break the audit trail
+      }
+    }
     return record;
+  }
+
+  /** Live feed for the dashboard. Returns an unsubscribe function. */
+  onAppend(fn: (r: AuditRecord) => void): () => void {
+    this.#listeners.add(fn);
+    return () => this.#listeners.delete(fn);
+  }
+
+  /** History page, newest first, optionally filtered. */
+  query(opts: {
+    limit: number;
+    beforeSeq?: number;
+    tool?: string;
+    event?: AuditEventKind;
+    verdict?: string;
+  }): AuditRecord[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (opts.beforeSeq !== undefined) {
+      where.push('seq < ?');
+      args.push(opts.beforeSeq);
+    }
+    if (opts.tool) {
+      where.push('tool = ?');
+      args.push(opts.tool);
+    }
+    if (opts.event) {
+      where.push('event = ?');
+      args.push(opts.event);
+    }
+    if (opts.verdict) {
+      where.push('verdict = ?');
+      args.push(opts.verdict);
+    }
+    const sql = `SELECT * FROM audit ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY seq DESC LIMIT ?`;
+    return (this.#db.prepare(sql).all(...args, opts.limit) as Row[]).map(toRecord);
   }
 
   tail(limit = 20): AuditRecord[] {
