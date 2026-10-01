@@ -11,14 +11,125 @@ import {
 import { connect, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type {
+  CalendarEvent,
+  CalendarProvider,
+  Draft,
+  DraftInput,
+  ListOptions,
+  MailHeader,
+  MailMessage,
+  MailProvider,
+} from '@jarvis/connectors';
 import { hashPin, sha256 } from '@jarvis/policy';
 import { MemoryStore, SecretName } from '@jarvis/secrets';
 import { createRuntime, type Runtime } from '../../apps/jarvisd/src/daemon/runtime.ts';
 import { startServer } from '../../apps/jarvisd/src/daemon/server.ts';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
 import type { Request } from '../../apps/jarvisd/src/ipc-schema.ts';
+import type { MailDigest, Summarizer } from '../../apps/jarvisd/src/orchestrator/quarantine.ts';
 import { appPaths } from '../../apps/jarvisd/src/paths.ts';
 import type { MacOps } from '../../apps/jarvisd/src/tools/macos.ts';
+
+/** In-memory mailbox. `failing` simulates an unreachable server. */
+export class FakeMailbox implements MailProvider {
+  readonly account: string;
+  readonly email: string;
+  readonly mails: MailMessage[] = [];
+  readonly drafts = new Map<string, Draft>();
+  readonly sent: Draft[] = [];
+  failing = false;
+  #n = 0;
+
+  constructor(account: string, email: string) {
+    this.account = account;
+    this.email = email;
+  }
+
+  add(from: string, subject: string, text: string, unread = true): MailMessage {
+    const id = `m${++this.#n}`;
+    const m: MailMessage = {
+      id,
+      account: this.account,
+      threadId: `t${id}`,
+      from,
+      to: this.email,
+      subject,
+      date: new Date().toISOString(),
+      snippet: text.slice(0, 120),
+      unread,
+      messageId: `<${id}@x>`,
+      text,
+    };
+    this.mails.push(m);
+    return m;
+  }
+
+  async list(o: ListOptions): Promise<MailHeader[]> {
+    if (this.failing) throw new Error('mail server unreachable (ETIMEDOUT)');
+    return this.mails.filter((m) => !o.unreadOnly || m.unread).slice(-o.max);
+  }
+  async get(id: string): Promise<MailMessage> {
+    const m = this.mails.find((x) => x.id === id);
+    if (!m) throw new Error(`no message ${id}`);
+    return m;
+  }
+  async createDraft(d: DraftInput): Promise<Draft> {
+    const draft = {
+      id: `d${++this.#n}`,
+      account: this.account,
+      to: d.to,
+      subject: d.subject,
+      body: d.body,
+    };
+    this.drafts.set(draft.id, draft);
+    return draft;
+  }
+  async getDraft(id: string): Promise<Draft> {
+    const d = this.drafts.get(id);
+    if (!d) throw new Error(`no draft ${id}`);
+    return d;
+  }
+  async sendDraft(id: string): Promise<{ id: string }> {
+    const d = await this.getDraft(id);
+    this.sent.push(d);
+    this.drafts.delete(id);
+    return { id };
+  }
+}
+
+export class FakeCalendar implements CalendarProvider {
+  readonly items: CalendarEvent[] = [];
+  async events(): Promise<CalendarEvent[]> {
+    return this.items;
+  }
+}
+
+/** Deterministic stand-in for the quarantine reader. */
+export class FakeSummarizer implements Summarizer {
+  async digest(mails: (MailHeader | MailMessage)[]): Promise<MailDigest[]> {
+    return mails.map((m) => {
+      const text = 'text' in m ? m.text : m.snippet;
+      const injection = /jarvis|assistant|ignore|forward/i.test(text);
+      const urgent = /urgent|aujourd'hui|today/i.test(`${m.subject} ${text}`);
+      return {
+        id: m.id,
+        account: m.account,
+        from: m.from,
+        subject: m.subject,
+        date: m.date,
+        unread: m.unread,
+        category: injection ? 'suspicious' : 'action',
+        urgency: urgent ? 'high' : 'normal',
+        summary: `résumé de « ${m.subject} »`,
+        asks: [],
+        deadline: null,
+        injectionSuspected: injection,
+      };
+    });
+  }
+}
+
 import { ScriptedBrain } from './scripted-brain.ts';
 
 export const EXAMPLE_POLICY = resolve(import.meta.dirname, '../../config/policy.example.yaml');
@@ -52,6 +163,9 @@ export interface Harness {
   home: string;
   work: string;
   mac: FakeMac;
+  gmail: FakeMailbox;
+  pro: FakeMailbox;
+  calendar: FakeCalendar;
   rt: Runtime;
   server: Server;
   socket: string;
@@ -92,6 +206,9 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
 
   const paths = appPaths(join(base, 'j'));
   const mac = new FakeMac();
+  const gmail = new FakeMailbox('perso', 'brightkyefoo@gmail.com');
+  const pro = new FakeMailbox('scriptify', 'brightky@scriptify.cm');
+  const calendar = new FakeCalendar();
   const rt = createRuntime({
     paths,
     home,
@@ -101,6 +218,14 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
     requireSealed: false,
     brainFactory: (ctx) => new ScriptedBrain(ctx.gate),
     mac,
+    connectors: {
+      providers: new Map<string, MailProvider>([
+        ['perso', gmail],
+        ['scriptify', pro],
+      ]),
+      calendar,
+      summarizer: new FakeSummarizer(),
+    },
   });
   const server = await startServer(rt, paths.socket);
 
@@ -156,6 +281,9 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
     home,
     work,
     mac,
+    gmail,
+    pro,
+    calendar,
     rt,
     server,
     socket: paths.socket,

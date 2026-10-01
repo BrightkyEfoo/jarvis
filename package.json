@@ -21,6 +21,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@jarvis/audit": "workspace:*",
+    "@jarvis/connectors": "workspace:*",
     "@jarvis/memory": "workspace:*",
     "@jarvis/policy": "workspace:*",
     "@jarvis/secrets": "workspace:*",

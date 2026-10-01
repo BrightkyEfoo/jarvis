@@ -16,6 +16,12 @@ struct SpeechChunker {
         drain(final: true)
     }
 
+    /// Whole text at once (not streamed).
+    static func collect(_ text: String) -> [String] {
+        var c = SpeechChunker()
+        return c.push(text) + c.flush()
+    }
+
     private mutating func drain(final: Bool) -> [String] {
         // Code blocks are never read aloud; an unclosed fence is held until it closes.
         var ready = buffer

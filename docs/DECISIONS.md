@@ -334,3 +334,57 @@ l'exige.
 - Les voix compactes restent un peu robotiques.
 - La signature est ad hoc : **chaque recompilation fait redemander les permissions**. Un
   certificat local de signature stable est prévu avec le HUD (S8).
+
+## ADR-019 — Mail et agenda : REST direct, IMAP, lecteur en quarantaine
+
+**Décision.**
+- **Google** : appels REST directs (`fetch`) pour Gmail et Agenda.
+  - On n'utilise **pas** le SDK `googleapis`, qui est énorme : la data est limitée.
+  - OAuth « Desktop app » avec **PKCE** sur une boucle locale ; le refresh token va dans le
+    Trousseau, et l'access token reste en mémoire.
+  - Scopes : `gmail.readonly`, `gmail.compose` et `calendar.readonly`. Comme `compose` inclut
+    l'envoi, **l'envoi est bloqué par le gate (N2)**.
+- **IMAP / SMTP** : `imapflow`, `nodemailer` et `mailparser`, soit quelques Mo.
+  - TLS est obligatoire (implicite, ou STARTTLS requis).
+  - Un certificat auto-signé est accepté par `ca_pem`, **sans jamais désactiver la vérification**.
+  - Les brouillons sont gardés tels que construits : on envoie **exactement les octets
+    approuvés**. Ils sont aussi copiés dans le dossier Brouillons du serveur.
+- **Lecteur en quarantaine** (§3.4) :
+  - Chaque lecture de mail passe par une requête séparée **sans aucun outil**, avec
+    `outputFormat` JSON Schema et un hook qui refuse tout outil.
+  - La sortie est validée par zod. Les ids inventés sont ignorés, les champs sont tronqués, et
+    l'expéditeur, le sujet et la date viennent du **serveur**, jamais du modèle.
+  - Une injection détectée force la catégorie `suspicious`.
+  - Si la quarantaine échoue, on retombe sur un résumé par métadonnées.
+- **Envoi** :
+  - `mail_draft` est N1 (rien ne part).
+  - `mail_send` est N2. Il se base sur l'empreinte du brouillon écrit par Jarvis : si le
+    brouillon a changé depuis l'approbation, **rien n'est envoyé**.
+  - L'approbation montre le destinataire, l'objet et le début du corps.
+- **Briefing** : un seul outil qui interroge l'agenda, les mails de tous les comptes (urgents
+  d'abord) et l'état du Mac en parallèle. Un seul aller-retour modèle, donc moins de latence.
+- **Comptes** : la liste des boîtes lisibles est dans la politique **scellée**. Une boîte en panne
+  n'empêche pas le briefing, elle y est signalée.
+
+## ADR-020 — Confirmations N2 à la voix, daemon sous launchd
+
+**Décision.**
+- **Voix** : à une demande N2, Jarvis lit le résumé en français, signale un destinataire issu d'un
+  contenu externe, puis demande « Tu confirmes ? ».
+  - Brightky maintient le raccourci et répond. Le oui doit être explicite (oui, je confirme,
+    vas-y…), **un non l'emporte toujours**, et tout ce qui n'est pas clair n'est pas un oui. Au
+    bout de 2 essais, la validation est renvoyée au terminal.
+  - Le canal `voice` est enregistré dans l'audit.
+  - **N3 jamais à la voix** : le serveur refuse `approve` sur ce canal pour une action qui demande
+    le PIN, et le PIN ne se prononce jamais.
+- **launchd** : `jarvis service install [--dev] [--voice]` installe des **LaunchAgents** (session
+  utilisateur, pas root), avec ces réglages :
+  - démarrage à la connexion, `KeepAlive`, `ProcessType=Interactive` ;
+  - **Node 24 en chemin absolu** et `PATH` minimal, donc pas d'environnement hérité du shell (donc
+    pas de `NODE_TLS_REJECT_UNAUTHORIZED`) ;
+  - logs dans `~/Library/Logs/Jarvis`.
+
+  Sans politique scellée, l'installation exige `--dev`.
+- **Mac toujours disponible** : `ops/scripts/mac-always-on.sh` (pas de veille sur secteur,
+  redémarrage après coupure si le matériel le permet). Un MacBook traverse les coupures de Douala
+  grâce à sa batterie.

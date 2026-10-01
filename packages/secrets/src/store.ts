@@ -5,6 +5,10 @@ export const SecretName = {
   claudeOauthToken: 'claude_oauth_token',
   policySha256: 'policy_sha256',
   pinHash: 'pin_scrypt',
+  /** Google "Desktop app" OAuth client (id + secret), JSON. */
+  googleClient: 'google.client',
+  googleRefreshToken: (account: string) => `google.${account}.refresh_token`,
+  mailPassword: (account: string) => `mail.${account}.password`,
 } as const;
 
 export interface SecretStore {

@@ -115,3 +115,20 @@ memory:
   # Brightky's Markdown notes: Jarvis reads them at each session start and never writes them.
   notes_dir: ~/Jarvis/memory
   prompt_max_chars: 8000
+
+mail:
+  # Mailboxes Jarvis may read. Credentials never go here: they are stored in the Keychain by
+  # `jarvis google connect <client.json> <id>` (Gmail + Calendar) or `jarvis mail add <id>` (IMAP).
+  accounts:
+    - { id: perso, type: gmail, email: brightkyefoo@gmail.com }
+    # Pro mailbox over IMAP (check your employer's / clients' AI policy first). TLS is mandatory;
+    # for a self-signed server certificate, paste it in ca_pem — verification is never disabled.
+    # - id: scriptify
+    #   type: imap
+    #   email: brightky@scriptify.cm
+    #   imap: { host: mail.example.cm, port: 993, secure: true }
+    #   smtp: { host: mail.example.cm, port: 465, secure: true }
+  triage_max: 25
+
+calendar:
+  google_account: perso

@@ -5,7 +5,7 @@ import Speech
 /// Push-to-talk loop: hold the hotkey → listen → release → transcribe → ask jarvisd → speak each
 /// sentence as it streams. Pressing again while Jarvis talks or thinks interrupts it (barge-in).
 final class Controller {
-    enum State { case idle, listening, transcribing, thinking, speaking }
+    enum State { case idle, listening, transcribing, thinking, speaking, confirming }
 
     private let config: VoiceConfig
     private let listener = Listener()
@@ -16,6 +16,10 @@ final class Controller {
     private var chunker = SpeechChunker()
     private var currentAsk: String?
     private var lang = "fr"
+    /// N2 approval waiting for a spoken yes/no (N3 never: PIN in the terminal).
+    private var pendingApproval: String?
+    private var confirmTries = 0
+    private var listeningForAnswer = false
 
     // Latency, measured from the key release (the moment Brightky stops talking).
     private var tRelease = Date()
@@ -48,7 +52,8 @@ final class Controller {
                 if self?.tFirstAudio == nil { self?.tFirstAudio = Date() }
             }
             self.speaker.onIdle = { [weak self] in
-                if self?.currentAsk == nil, self?.state == .speaking { self?.state = .idle }
+                guard let self, self.state == .speaking else { return }
+                if self.pendingApproval != nil { self.state = .confirming } else if self.currentAsk == nil { self.state = .idle }
             }
             self.listener.onPartial = { partial in
                 print("\r\u{1B}[2K🎙 \(partial)", terminator: "")
@@ -61,10 +66,17 @@ final class Controller {
     }
 
     private func press() {
-        if state == .speaking || state == .thinking { bargeIn() }
-        guard state == .idle else { return }
+        // While Jarvis asks "tu confirmes ?", the key answers instead of interrupting.
+        let answering = pendingApproval != nil && (state == .confirming || state == .speaking)
+        if answering {
+            speaker.stop()
+        } else {
+            if state == .speaking || state == .thinking { bargeIn() }
+            guard state == .idle else { return }
+        }
         do {
             try listener.start(prefer: lang)
+            listeningForAnswer = answering
             state = .listening
             NSSound(named: "Tink")?.play()
         } catch {
@@ -78,6 +90,7 @@ final class Controller {
             client.send(["id": shortId(), "cmd": "interrupt"])
             currentAsk = nil
         }
+        pendingApproval = nil
         chunker = SpeechChunker()
         state = .idle
         print("\n⏹ interrompu")
@@ -94,9 +107,15 @@ final class Controller {
     private func transcribed(_ candidates: [Candidate]) {
         sttMs = ms(since: tRelease)
         print("\r\u{1B}[2K", terminator: "")
+        let answering = listeningForAnswer
+        listeningForAnswer = false
         guard let pick = LanguagePick.choose(candidates, prefer: lang) else {
             print("(rien entendu)")
-            state = .idle
+            state = answering ? .confirming : .idle
+            return
+        }
+        if answering {
+            answer(pick.text)
             return
         }
         lang = pick.lang
@@ -129,12 +148,13 @@ final class Controller {
             let name = (msg["name"] as? String ?? "").replacingOccurrences(of: "mcp__jarvis__", with: "")
             print("\n⚙ \(name)")
         case "approval":
-            let request = msg["request"] as? [String: Any] ?? [:]
-            let summary = request["summary"] as? String ?? ""
-            print("\n⚠ validation requise : \(summary) → jarvis approvals")
-            say(lang == "fr"
-                ? "Validation requise. Confirme dans le terminal avec jarvis approvals."
-                : "Approval needed. Confirm in the terminal with jarvis approvals.")
+            askConfirmation(msg["request"] as? [String: Any] ?? [:])
+        case "approval_resolved":
+            // Answered elsewhere (terminal, timeout, STOP): stop waiting for a spoken answer.
+            if let approvalId = msg["approvalId"] as? String, approvalId == pendingApproval {
+                pendingApproval = nil
+                if state == .confirming { state = .thinking }
+            }
         case "done":
             for sentence in chunker.flush() { say(sentence) }
             let data = msg["data"] as? [String: Any] ?? [:]
@@ -149,6 +169,51 @@ final class Controller {
             say(spokenError(msg["error"] as? String ?? "error"))
         default:
             break
+        }
+    }
+
+    private func askConfirmation(_ request: [String: Any]) {
+        let summary = request["summary"] as? String ?? ""
+        print("\n⚠ validation requise : \(summary)")
+        if request["needsPin"] as? Bool == true {
+            say(lang == "fr"
+                ? "Action sensible : elle se valide avec ton PIN, dans le terminal, jarvis approvals."
+                : "Sensitive action: approve it with your PIN in the terminal, jarvis approvals.")
+            return
+        }
+        guard let approvalId = request["id"] as? String else { return }
+        pendingApproval = approvalId
+        confirmTries = 0
+        let external = (request["externalDestinations"] as? [String] ?? []).isEmpty == false
+        for s in SpeechChunker.collect(Confirmation.spoken(summary, lang: lang)) { say(s) }
+        if external {
+            say(lang == "fr" ? "Attention : ce destinataire vient d'un contenu externe." : "Careful: this recipient comes from external content.")
+        }
+        say(lang == "fr"
+            ? "Tu confirmes ? Maintiens \(config.hotkeyLabel) et dis oui ou non."
+            : "Do you confirm? Hold the shortcut and say yes or no.")
+    }
+
+    private func answer(_ transcript: String) {
+        guard let approvalId = pendingApproval else { return }
+        print("🗣 \(transcript)")
+        switch Confirmation.parse(transcript) {
+        case .yes:
+            client.send(["id": shortId(), "cmd": "approve", "approvalId": approvalId, "channel": "voice"])
+            pendingApproval = nil
+            say(lang == "fr" ? "C'est confirmé." : "Confirmed.")
+        case .no:
+            client.send(["id": shortId(), "cmd": "deny", "approvalId": approvalId, "channel": "voice"])
+            pendingApproval = nil
+            say(lang == "fr" ? "C'est annulé." : "Cancelled.")
+        case .unclear:
+            confirmTries += 1
+            if confirmTries < 2 {
+                say(lang == "fr" ? "Je n'ai pas compris. Oui ou non ?" : "I didn't get that. Yes or no?")
+            } else {
+                pendingApproval = nil
+                say(lang == "fr" ? "Je laisse la validation dans le terminal." : "I'll leave the approval in the terminal.")
+            }
         }
     }
 

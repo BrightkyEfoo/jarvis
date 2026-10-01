@@ -27,6 +27,33 @@ const AutoApproveRule = z
   })
   .strict();
 
+const AccountId = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{1,30}$/, 'lowercase id, e.g. perso or scriptify');
+const MailServer = z
+  .object({
+    host: z.string().min(1),
+    port: z.number().int().min(1).max(65535),
+    secure: z.boolean(),
+  })
+  .strict();
+
+const MailAccount = z.discriminatedUnion('type', [
+  z.object({ id: AccountId, type: z.literal('gmail'), email: z.email() }).strict(),
+  z
+    .object({
+      id: AccountId,
+      type: z.literal('imap'),
+      email: z.email(),
+      user: z.string().optional(),
+      imap: MailServer,
+      smtp: MailServer,
+      /** PEM of a self-signed server certificate to trust (verification stays on). */
+      ca_pem: z.string().optional(),
+    })
+    .strict(),
+]);
+
 export const PolicySchema = z
   .object({
     version: z.literal(1),
@@ -102,6 +129,22 @@ export const PolicySchema = z
         roots: z.array(z.string()).prefault([]),
         /** Individual project folders. Must be inside filesystem.read_roots. */
         paths: z.array(z.string()).prefault([]),
+      })
+      .strict()
+      .prefault({}),
+    mail: z
+      .object({
+        /** Which mailboxes Jarvis may read. Sealed: adding one is Brightky's decision. */
+        accounts: z.array(MailAccount).prefault([]),
+        /** Max messages summarised per triage. */
+        triage_max: z.number().int().min(1).max(100).prefault(25),
+      })
+      .strict()
+      .prefault({}),
+    calendar: z
+      .object({
+        /** Gmail account whose Google Calendar is read (default: the first Gmail account). */
+        google_account: z.string().optional(),
       })
       .strict()
       .prefault({}),

@@ -76,6 +76,15 @@ export function loadPolicy(opts: LoadPolicyOptions): Policy {
   const readRoots = expand(fs.read_roots);
   const projects = { roots: expand(parsed.projects.roots), paths: expand(parsed.projects.paths) };
   const readable = (p: string) => readRoots.some((r) => p === r || p.startsWith(`${r}/`));
+  const ids = parsed.mail.accounts.map((a) => a.id);
+  if (new Set(ids).size !== ids.length)
+    throw new PolicyIntegrityError('mail.accounts: duplicate account id');
+  const cal = parsed.calendar.google_account;
+  if (cal && !parsed.mail.accounts.some((a) => a.id === cal && a.type === 'gmail')) {
+    throw new PolicyIntegrityError(
+      `calendar.google_account "${cal}" is not a gmail account of mail.accounts`,
+    );
+  }
   for (const p of [...projects.roots, ...projects.paths]) {
     if (!readable(p))
       throw new PolicyIntegrityError(`projects entry ${p} is outside filesystem.read_roots`);

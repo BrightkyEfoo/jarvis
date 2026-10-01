@@ -86,6 +86,28 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   demande et renvoie vers `jarvis approvals` ; la confirmation vocale N2 arrive au S4, et le PIN ne
   sera jamais prononcé à voix haute.
 
+## Mails et agenda (S4)
+
+- **Lecture en quarantaine** : le contenu d'un mail n'atteint l'orchestrateur que sous forme de
+  résumé.
+  - Ce résumé est produit par une requête **sans outil** et validé par schéma. L'identité de
+    l'expéditeur vient du serveur.
+  - Les tentatives de manipulation sont signalées, et la session reste teintée (N2 toujours
+    confirmé, N3 refusé).
+- **Envoi** : toujours N2. Le contenu approuvé est vérifié par empreinte au moment de l'envoi. Un
+  destinataire trouvé dans un mail est signalé à voix haute et à l'écran.
+- **Identifiants** :
+  - le refresh token Google et les mots de passe IMAP sont dans le Trousseau, et enregistrés
+    auprès du redacteur ;
+  - l'access token Google ne vit qu'en mémoire.
+- **Scopes Google minimaux** : la lecture d'agenda reste en lecture seule. `gmail.compose`
+  permettrait d'envoyer, mais l'envoi n'est accessible qu'à travers `mail_send` (N2).
+- **TLS des serveurs IMAP** : jamais désactivé. Un certificat auto-signé doit être épinglé
+  explicitement dans la politique scellée.
+- **Confirmations vocales** : N2 seulement. Le serveur refuse le canal `voice` pour toute action qui
+  demande le PIN.
+- **launchd** : agents utilisateur (jamais root), environnement minimal, Node en chemin absolu.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

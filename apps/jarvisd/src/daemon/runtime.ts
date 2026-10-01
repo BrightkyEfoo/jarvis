@@ -1,5 +1,14 @@
 import { mkdirSync } from 'node:fs';
 import { AuditLog } from '@jarvis/audit';
+import {
+  type CalendarProvider,
+  GmailProvider,
+  GoogleAuth,
+  GoogleCalendar,
+  type GoogleClient,
+  ImapProvider,
+  type MailProvider,
+} from '@jarvis/connectors';
 import { Memory } from '@jarvis/memory';
 import {
   ApprovalBroker,
@@ -15,10 +24,16 @@ import {
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import type { Brain } from '../orchestrator/brain.ts';
 import { ClaudeBrain } from '../orchestrator/claude.ts';
+import {
+  MetadataSummarizer,
+  QuarantineSummarizer,
+  type Summarizer,
+} from '../orchestrator/quarantine.ts';
 import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import type { AppPaths } from '../paths.ts';
 import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
+import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
 
 export interface BrainContext {
@@ -42,6 +57,84 @@ export interface RuntimeOptions {
   brainFactory?: (ctx: BrainContext) => Brain;
   /** Tests inject fake macOS side effects; production uses open/osascript/shortcuts. */
   mac?: MacOps;
+  /** Tests inject fake mailboxes / calendar / summarizer; production builds them from policy + Keychain. */
+  connectors?: {
+    providers: Map<string, MailProvider>;
+    calendar: CalendarProvider | null;
+    summarizer?: Summarizer;
+  };
+}
+
+export interface AccountStatus {
+  id: string;
+  type: 'gmail' | 'imap';
+  email: string;
+  connected: boolean;
+  /** What is missing when not connected. */
+  missing?: string;
+}
+
+/** Mail + calendar providers from the sealed account list and the Keychain. */
+function buildConnectors(policy: Policy, secrets: SecretStore, redactor: Redactor) {
+  const providers = new Map<string, MailProvider>();
+  const auths = new Map<string, GoogleAuth>();
+  const status: AccountStatus[] = [];
+  const clientJson = secrets.get(SecretName.googleClient);
+  const client = clientJson ? (JSON.parse(clientJson) as GoogleClient) : null;
+  redactor.register('google_client_secret', client?.client_secret);
+
+  for (const acc of policy.mail.accounts) {
+    if (acc.type === 'gmail') {
+      const refresh = secrets.get(SecretName.googleRefreshToken(acc.id));
+      redactor.register('google_refresh_token', refresh);
+      if (client && refresh) {
+        const auth = new GoogleAuth({ client, refreshToken: refresh });
+        auths.set(acc.id, auth);
+        providers.set(acc.id, new GmailProvider(acc.id, acc.email, auth));
+        status.push({ id: acc.id, type: 'gmail', email: acc.email, connected: true });
+      } else {
+        status.push({
+          id: acc.id,
+          type: 'gmail',
+          email: acc.email,
+          connected: false,
+          missing: `jarvis google connect <client.json> ${acc.id}`,
+        });
+      }
+    } else {
+      const password = secrets.get(SecretName.mailPassword(acc.id));
+      redactor.register('mail_password', password);
+      if (password) {
+        providers.set(
+          acc.id,
+          new ImapProvider(
+            {
+              account: acc.id,
+              email: acc.email,
+              imap: acc.imap,
+              smtp: acc.smtp,
+              ...(acc.user ? { user: acc.user } : {}),
+              ...(acc.ca_pem ? { caPem: acc.ca_pem } : {}),
+            },
+            password,
+          ),
+        );
+        status.push({ id: acc.id, type: 'imap', email: acc.email, connected: true });
+      } else {
+        status.push({
+          id: acc.id,
+          type: 'imap',
+          email: acc.email,
+          connected: false,
+          missing: `jarvis mail add ${acc.id}`,
+        });
+      }
+    }
+  }
+  const calId =
+    policy.calendar.google_account ?? policy.mail.accounts.find((a) => a.type === 'gmail')?.id;
+  const calAuth = calId ? auths.get(calId) : undefined;
+  return { providers, calendar: calAuth ? new GoogleCalendar(calAuth) : null, status };
 }
 
 export interface Runtime {
@@ -52,6 +145,7 @@ export interface Runtime {
   pin: PinGuard;
   gate: Gate;
   memory: Memory;
+  mail: { providers: Map<string, MailProvider>; status: AccountStatus[] };
   /** Latest subscription window states (five_hour, seven_day, seven_day_opus…). */
   quota: Map<string, RateLimitInfo>;
   /** Null when no subscription token is stored yet (`jarvis auth set-token`). */
@@ -130,6 +224,40 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   }))
     gate.register(t);
   for (const t of createMemoryTools(memory)) gate.register(t);
+
+  const built = o.connectors
+    ? {
+        providers: o.connectors.providers,
+        calendar: o.connectors.calendar,
+        status: [...o.connectors.providers.values()].map((p) => ({
+          id: p.account,
+          type: 'imap' as const,
+          email: p.email,
+          connected: true,
+        })),
+      }
+    : buildConnectors(policy, secrets, redactor);
+  const summarizer: Summarizer =
+    o.connectors?.summarizer ??
+    (oauthToken
+      ? new QuarantineSummarizer({
+          policy,
+          paths,
+          home: o.home,
+          oauthToken,
+          onViolation: (problem) => killswitch.engage(`quarantine violation: ${problem}`),
+        })
+      : new MetadataSummarizer());
+  for (const t of createMailTools({
+    providers: built.providers,
+    declared: o.connectors ? [...built.providers.keys()] : policy.mail.accounts.map((a) => a.id),
+    calendar: built.calendar,
+    summarizer,
+    triageMax: policy.mail.triage_max,
+    status: (signal) => (o.mac ?? realMacOps).status(signal),
+  })) {
+    gate.register(t);
+  }
   const quota = new Map<string, RateLimitInfo>();
 
   const rt: Runtime = {
@@ -140,6 +268,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     pin,
     gate,
     memory,
+    mail: { providers: built.providers, status: built.status },
     quota,
     brain: null,
     devMode: o.devMode,

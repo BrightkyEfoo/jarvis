@@ -58,6 +58,21 @@ enum VoiceTests {
         check(LanguagePick.replyLanguage("La réunion est décalée à jeudi matin.", hint: "en") == "fr", "French reply detected")
         check(LanguagePick.replyLanguage("The meeting was moved to Thursday morning.", hint: "fr") == "en", "English reply detected")
 
+        // Spoken confirmations: strict yes, a no always wins, anything else is unclear.
+        for t in ["Oui.", "oui, envoie", "Ouais", "Yes please", "Je confirme", "vas-y", "OK"] {
+            check(Confirmation.parse(t) == .yes, "yes: \(t)")
+        }
+        for t in ["Non.", "non, oui en fait", "Annule", "no", "Stop", "attends"] {
+            check(Confirmation.parse(t) == .no, "no: \(t)")
+        }
+        for t in ["", "euh", "peut-être", "c'est qui Paul ?", "ouistiti"] {
+            check(Confirmation.parse(t) == .unclear, "unclear: \(t)")
+        }
+        check(Confirmation.spoken("Send from perso to paul@client.cm — \"Devis\": Je valide.", lang: "fr")
+                == "Envoyer depuis perso à paul@client.cm, objet « Devis » : Je valide.", "summary spoken in French",
+              Confirmation.spoken("Send from perso to paul@client.cm — \"Devis\": Je valide.", lang: "fr"))
+        check(Confirmation.spoken("Run: uname -s", lang: "en") == "Run: uname -s", "English summary unchanged")
+
         print(failures == 0 ? "✔ \(passed) voice tests passed" : "✖ \(failures) failed, \(passed) passed")
         exit(failures == 0 ? 0 : 1)
     }

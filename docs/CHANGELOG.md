@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.0 — Sprint 4 : mails, agenda, briefing, confirmations vocales, launchd (01/10/2026)
+
+### Ajouté
+- **`@jarvis/connectors`** :
+  - Gmail et Google Agenda en REST direct (OAuth PKCE, token dans le Trousseau) ;
+  - IMAP/SMTP générique (TLS obligatoire, certificat épinglé possible via `ca_pem`).
+- **Lecteur en quarantaine** : les mails sont résumés par un modèle sans outil, au format JSON
+  contraint ; les injections sont signalées ; repli sur les métadonnées en cas d'échec.
+- **Outils** : `mail_triage`, `mail_read`, `mail_draft` (N1), `mail_send` (N2, empreinte du
+  brouillon vérifiée), `calendar_list` et `briefing`.
+- **Voix** : confirmations N2 à l'oral (« Tu confirmes ? » → oui/non), refus côté serveur des N3
+  par la voix, résumés reformulés en français pour l'oral.
+- **launchd** : `jarvis service install|uninstall|status|logs`, plus `ops/scripts/mac-always-on.sh`.
+- **CLI** : `jarvis google connect`, `jarvis mail add|status|test`.
+- **Docs** : `docs/SETUP-GOOGLE.md`, ADR 019 et 020.
+- **Tests** : 12 tests connecteurs, 9 tests e2e du Sprint 4 (dont la démo du mois 1), 3 tests
+  launchd et 20 nouveaux tests Swift (confirmations).
+
+### Démo du mois 1, couverte de bout en bout par les tests
+Briefing → réponse à un mail en brouillon → « tu confirmes ? » → « oui » à la voix → envoyé, avec
+l'approbation `voice` inscrite dans l'audit.
+
+### À noter
+- Les boîtes pro : `mail.transitsoftservices.com` n'existe plus dans le DNS, et `scriptify.cm` ne
+  répond pas en IMAP/SMTP depuis ton réseau. Il faut les bons paramètres de l'hébergeur.
+
 ## 0.3.0 — Sprint 3 : voix en push-to-talk, 100 % locale (01/10/2026)
 
 ### Ajouté

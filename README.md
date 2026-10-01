@@ -4,10 +4,11 @@ Assistant vocal et orchestrateur de développement pour macOS : une journée de 
 parler, pas à taper. Brightky décide, valide et relit ; Jarvis exécute, dans les limites que le
 code lui impose.
 
-**État : Sprint 3.** En place : le moteur de permissions, l'audit, le kill switch, les secrets,
-les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. On peut parler à
-Jarvis en français ou en anglais, au clavier ou à la voix (push-to-talk, reconnaissance 100 %
-locale, 0 Mo à télécharger).
+**État : Sprint 4 (fin du mois 1).** En place : le moteur de permissions, l'audit, le kill switch,
+les secrets, les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. Jarvis
+répond à la voix (push-to-talk, 100 % local) en français et en anglais, lit Gmail, IMAP et
+l'agenda via un lecteur en quarantaine, fait le briefing du matin, rédige des brouillons et ne les
+envoie qu'après ton « oui ». Il tourne en service launchd.
 
 ## Ce qui est garanti par le code
 - Niveaux **N0 à N4**. Les actions interdites (N4) sont bloquées dans le code et ne peuvent pas être
@@ -39,7 +40,10 @@ jarvis auth set-token          # colle le token : il va dans le Trousseau
 # 2. PIN pour les actions N3 et la reprise après STOP
 jarvis pin set
 
-# 3. Politique : relis config/policy.example.yaml, puis scelle-la
+# 3. Gmail + Agenda : suis docs/SETUP-GOOGLE.md, puis
+jarvis google connect ~/Downloads/client_secret_XXXX.json perso
+
+# 4. Politique : relis config/policy.example.yaml, puis scelle-la
 ops/scripts/seal-policy.sh config/policy.example.yaml   # demande sudo pour la copie root
 ```
 
@@ -49,6 +53,9 @@ ops/scripts/seal-policy.sh config/policy.example.yaml   # demande sudo pour la c
 jarvis daemon                  # policy scellée (production)
 jarvis daemon --dev            # policy du repo non scellée ; N3 désactivé
 
+jarvis service install --voice   # jarvisd + voix au démarrage de la session (launchd)
+jarvis "qu'est-ce qui m'attend aujourd'hui ?"   # briefing : agenda + mails triés
+jarvis "réponds à Paul que je valide le devis"  # brouillon → tu confirmes → envoyé
 jarvis "quelle heure est-il ?"
 jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "plan the next sprint"   # Opus pour la planification, Sonnet sinon ; FR ou EN
@@ -79,6 +86,7 @@ Arborescence :
 - `packages/audit` : journal ;
 - `packages/secrets` : Trousseau et rédaction ;
 - `packages/memory` : mémoire (notes Markdown, faits FTS5, usage) ;
+- `packages/connectors` : Gmail, Agenda, IMAP/SMTP ;
 - `config/` : policy d'exemple ;
 - `ops/scripts/` : scellement ;
 - `tests/{e2e,redteam,perf}`.

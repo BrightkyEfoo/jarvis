@@ -179,17 +179,50 @@ async function handle(
       return;
 
     case 'approve': {
+      const channel = req.channel ?? 'cli';
+      // A spoken "yes" can be overheard or replayed: N3 is never approved by voice.
+      const pending = rt.approvals.pending().find((p) => p.id === req.approvalId);
+      if (channel === 'voice' && pending?.needsPin)
+        return fail('N3 actions need the PIN in the terminal, never by voice');
       const r = rt.approvals.resolve(req.approvalId, {
         approve: true,
-        channel: 'cli',
-        ...(req.pin ? { pin: req.pin } : {}),
+        channel,
+        ...(req.pin && channel === 'cli' ? { pin: req.pin } : {}),
       });
       return r.ok ? done() : fail(r.error);
     }
 
     case 'deny': {
-      const r = rt.approvals.resolve(req.approvalId, { approve: false, channel: 'cli' });
+      const r = rt.approvals.resolve(req.approvalId, {
+        approve: false,
+        channel: req.channel ?? 'cli',
+      });
       return r.ok ? done() : fail(r.error);
+    }
+
+    case 'mail_status': {
+      const accounts = rt.mail.status.map((s) => ({ ...s, test: undefined as string | undefined }));
+      if (req.test) {
+        await Promise.all(
+          accounts.map(async (a) => {
+            const p = rt.mail.providers.get(a.id);
+            if (!p) return;
+            const t0 = performance.now();
+            try {
+              await Promise.race([
+                p.list({ unreadOnly: false, sinceHours: 24, max: 1 }),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('timeout after 20 s')), 20_000),
+                ),
+              ]);
+              a.test = `ok (${Math.round(performance.now() - t0)} ms)`;
+            } catch (e) {
+              a.test = `error: ${(e as Error).message}`;
+            }
+          }),
+        );
+      }
+      return done(accounts);
     }
 
     case 'audit_tail':

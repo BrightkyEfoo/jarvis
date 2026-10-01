@@ -25,11 +25,21 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
     .object({
       id,
       cmd: z.literal('approve'),
+      /** Where Brightky answered from; recorded in the audit log. */
+      channel: z.enum(['cli', 'voice']).optional(),
       approvalId: z.string().max(64),
       pin: z.string().max(32).optional(),
     })
     .strict(),
-  z.object({ id, cmd: z.literal('deny'), approvalId: z.string().max(64) }).strict(),
+  z
+    .object({
+      id,
+      cmd: z.literal('deny'),
+      approvalId: z.string().max(64),
+      channel: z.enum(['cli', 'voice']).optional(),
+    })
+    .strict(),
+  z.object({ id, cmd: z.literal('mail_status'), test: z.boolean().optional() }).strict(),
   z
     .object({
       id,

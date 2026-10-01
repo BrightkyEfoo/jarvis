@@ -260,6 +260,120 @@ async function voiceCommand(args: string[]): Promise<void> {
   await new Promise((r) => child.on('exit', r));
 }
 
+/** launchd: jarvisd (and optionally the voice app) at login, restarted if they die. */
+async function serviceCommand(args: string[]): Promise<void> {
+  const svc = await import('./service.ts');
+  const { existsSync } = await import('node:fs');
+  const { SEALED_POLICY_PATH } = await import('@jarvis/policy');
+  const [sub = 'status'] = args;
+  const p = svc.servicePaths();
+
+  if (sub === 'install') {
+    const dev = args.includes('--dev');
+    const voice = args.includes('--voice');
+    if (!dev && !existsSync(SEALED_POLICY_PATH)) {
+      console.error(
+        red(
+          '✖ aucune politique scellée : lance ops/scripts/seal-policy.sh, ou installe en mode dev (--dev).',
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (voice && !existsSync(p.voiceBinary)) {
+      console.error(red('✖ app vocale non compilée : jarvis voice build'));
+      process.exitCode = 1;
+      return;
+    }
+    for (const f of svc.install(svc.agentSpecs(p, { dev, voice, node: process.execPath }), p))
+      console.log(`✔ ${f}`);
+    console.log(dim(`logs : ${p.logsDir}`));
+    return;
+  }
+  if (sub === 'uninstall') {
+    const removed = svc.uninstall(p);
+    console.log(
+      removed.length ? removed.map((f) => `✔ retiré ${f}`).join('\n') : 'Rien à retirer.',
+    );
+    return;
+  }
+  if (sub === 'logs') {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('/usr/bin/tail', ['-n', '40', `${p.logsDir}/jarvisd.log`], { stdio: 'inherit' });
+    return;
+  }
+  for (const s of svc.status()) {
+    console.log(
+      `${s.state === 'running' ? '✔' : '·'} ${s.label.padEnd(30)} ${s.state}${s.pid ? ` (pid ${s.pid})` : ''}${s.lastExit ? dim(` dernier code : ${s.lastExit}`) : ''}`,
+    );
+  }
+}
+
+/** OAuth in the browser; the refresh token goes straight to the Keychain, never to the screen. */
+async function googleCommand(args: string[]): Promise<void> {
+  const [sub, file, account = 'perso'] = args;
+  if (sub !== 'connect' || !file) {
+    console.log('usage: jarvis google connect <client_secret.json> [account-id]');
+    return;
+  }
+  const { readFileSync } = await import('node:fs');
+  const { execFile } = await import('node:child_process');
+  const { connectGoogle, parseClientFile } = await import('@jarvis/connectors');
+  const { KeychainStore, SecretName } = await import('@jarvis/secrets');
+  const client = parseClientFile(readFileSync(file, 'utf8'));
+  const store = new KeychainStore();
+  console.log(
+    'Ouverture du navigateur pour autoriser Jarvis (lecture des mails, brouillons, lecture de l’agenda)…',
+  );
+  const r = await connectGoogle({
+    client,
+    openUrl: (url) =>
+      new Promise((ok, ko) => execFile('/usr/bin/open', [url], (e) => (e ? ko(e) : ok()))),
+  });
+  store.set(SecretName.googleClient, JSON.stringify(client));
+  store.set(SecretName.googleRefreshToken(account), r.refreshToken);
+  console.log(
+    `✔ compte « ${account} » connecté (${r.scope.split(' ').length} autorisations). Redémarre le daemon.`,
+  );
+  console.log(
+    dim('  Tu peux supprimer le fichier client_secret : il est maintenant dans le Trousseau.'),
+  );
+}
+
+async function mailCommand(args: string[]): Promise<void> {
+  const [sub, account] = args;
+  if (sub === 'add' && account) {
+    const { KeychainStore, SecretName } = await import('@jarvis/secrets');
+    const password = await askHidden(
+      `Mot de passe IMAP/SMTP de « ${account} » (de préférence un mot de passe d'application) : `,
+    );
+    if (!password) return;
+    new KeychainStore().set(SecretName.mailPassword(account), password);
+    console.log(
+      `✔ mot de passe de « ${account} » enregistré dans le Trousseau. Redémarre le daemon, puis : jarvis mail test`,
+    );
+    return;
+  }
+  const test = sub === 'test';
+  return simple({ cmd: 'mail_status', test }, (d) => {
+    const rows = d as {
+      id: string;
+      type: string;
+      email: string;
+      connected: boolean;
+      missing?: string;
+      test?: string;
+    }[];
+    if (rows.length === 0) console.log('Aucun compte dans la politique (section mail.accounts).');
+    for (const a of rows) {
+      const state = a.connected ? (a.test ? a.test : 'connecté') : `non connecté → ${a.missing}`;
+      console.log(
+        `${a.connected ? '✔' : '✖'} ${a.id.padEnd(12)} ${a.type.padEnd(6)} ${a.email.padEnd(32)} ${state}`,
+      );
+    }
+  });
+}
+
 async function memoryCommand(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   type FactView = { id: number; kind: string; text: string; source: string };
@@ -321,6 +435,9 @@ const HELP = `jarvis — assistant de Brightky
   jarvis approve|deny <id>     valider / refuser
   jarvis costs [today|week|month]  consommation (équivalent API) et quota de l'abonnement
   jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
+  jarvis google connect <client.json> [compte]  connecter Gmail + Agenda (OAuth)
+  jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
+  jarvis service install [--dev] [--voice] | uninstall | status | logs   démarrage auto (launchd)
   jarvis voice [build|test|selftest]  voix push-to-talk (maintiens ⌥Espace), 100 % locale
   jarvis audit tail [n]        dernières entrées du journal
   jarvis audit verify          vérifier la chaîne de hash du journal
@@ -501,6 +618,12 @@ async function main(argv: string[]): Promise<void> {
       return memoryCommand(rest);
     case 'voice':
       return voiceCommand(rest);
+    case 'google':
+      return googleCommand(rest);
+    case 'service':
+      return serviceCommand(rest);
+    case 'mail':
+      return mailCommand(rest);
     case 'auth':
     case 'pin':
     case 'policy':
