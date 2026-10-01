@@ -388,3 +388,39 @@ l'exige.
 - **Mac toujours disponible** : `ops/scripts/mac-always-on.sh` (pas de veille sur secteur,
   redémarrage après coupure si le matériel le permet). Un MacBook traverse les coupures de Douala
   grâce à sa batterie.
+
+## ADR-021 — Recherche web et YouTube (avancées depuis le S13)
+
+**Contexte.** Brightky veut que Jarvis fasse ses recherches, y compris « regarder » des vidéos
+YouTube. Contraintes : data limitée, zéro coût hors abonnement.
+
+**Décision.**
+- **`web_research`** : un **agent de recherche isolé**, sous forme de requête SDK séparée.
+  - Surface vérifiée en réel : `WebSearch` + `StructuredOutput`, rien d'autre (pas de fichiers,
+    de mails, de shell ni d'outils Jarvis).
+  - WebSearch s'exécute **côté Anthropic** : le Mac ne télécharge pas de pages et la recherche est
+    incluse dans l'abonnement.
+  - Un hook n'autorise que ces outils et plafonne WebFetch si un CLI futur l'expose.
+  - La sortie est un JSON validé (réponse, points clés, sources en http(s) seulement, confiance,
+    injection suspectée).
+  - Le mode `quick` utilise Sonnet ; le mode `deep` utilise Opus avec un effort élevé.
+- **`youtube_search` / `youtube_watch`** : yt-dlp installé avec `uv tool install --with yt-dlp-ejs
+  yt-dlp`, environ 14 Mo, sans le Python 3.14 ni le Deno de Homebrew (plus de 100 Mo).
+  - Node 24 sert de moteur JavaScript pour les défis YouTube.
+  - **Seuls les sous-titres** sont téléchargés (`--skip-download`) : environ 50 à 100 Ko, plus la
+    page.
+  - L'URL est réduite à son **id de 11 caractères**, puis reconstruite par Jarvis : yt-dlp ne
+    reçoit jamais d'URL arbitraire.
+  - La transcription, en paragraphes horodatés de 30 s, est lue par l'agent en **mode document,
+    sans aucun outil**.
+- Les sorties sont des données externes : encadrées, et elles teintent la session.
+
+**Bug trouvé en réel.** `z.toJSONSchema` produit un schéma au format draft 2020-12, que le CLI
+refuse. La quarantaine des mails retombait **silencieusement** sur les métadonnées. Le schéma est
+maintenant au format draft-07, sans l'en-tête `$schema`.
+
+**Mesuré.** Sous-titres du TED « Inside the Mind of a Master Procrastinator » (14 min) : 6,7 s,
+français choisi automatiquement, 13 400 caractères. Recherche YouTube : 1,9 s.
+
+**Risque résiduel.** Une page web piégée peut biaiser une synthèse, sans jamais pouvoir agir.
+Ouvrir une source citée passe par `url_open` (N2 en session teintée).

@@ -108,6 +108,17 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   demande le PIN.
 - **launchd** : agents utilisateur (jamais root), environnement minimal, Node en chemin absolu.
 
+## Recherche web et YouTube
+
+- **Agent de recherche** : il ne dispose que de `WebSearch` (et `StructuredOutput`), surface
+  vérifiée à chaque `init`. Tout autre outil déclenche STOP. Sa sortie est validée par schéma ;
+  les sources non http(s) sont rejetées.
+- **YouTube** : seul un id de 11 caractères est accepté, et l'URL est reconstruite par Jarvis.
+  yt-dlp est lancé sans shell, avec un environnement minimal et les sous-titres seulement. La
+  transcription est lue sans aucun outil.
+- **Données externes** : tout ce qui vient du web est encadré et teinte la session (N2 toujours
+  confirmé, N3 refusé, liens externes en N2).
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

@@ -8,7 +8,8 @@ code lui impose.
 les secrets, les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. Jarvis
 répond à la voix (push-to-talk, 100 % local) en français et en anglais, lit Gmail, IMAP et
 l'agenda via un lecteur en quarantaine, fait le briefing du matin, rédige des brouillons et ne les
-envoie qu'après ton « oui ». Il tourne en service launchd.
+envoie qu'après ton « oui ». Il fait aussi des recherches web sourcées et résume des vidéos YouTube
+à partir de leurs sous-titres. Il tourne en service launchd.
 
 ## Ce qui est garanti par le code
 - Niveaux **N0 à N4**. Les actions interdites (N4) sont bloquées dans le code et ne peuvent pas être
@@ -56,6 +57,8 @@ jarvis daemon --dev            # policy du repo non scellée ; N3 désactivé
 jarvis service install --voice   # jarvisd + voix au démarrage de la session (launchd)
 jarvis "qu'est-ce qui m'attend aujourd'hui ?"   # briefing : agenda + mails triés
 jarvis "réponds à Paul que je valide le devis"  # brouillon → tu confirmes → envoyé
+jarvis "compare Tauri et Electron pour notre HUD"   # recherche web sourcée
+jarvis "résume-moi cette vidéo https://youtu.be/arj7oStGLkU"   # via les sous-titres
 jarvis "quelle heure est-il ?"
 jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "plan the next sprint"   # Opus pour la planification, Sonnet sinon ; FR ou EN

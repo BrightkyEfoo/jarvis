@@ -30,11 +30,13 @@ import {
   type Summarizer,
 } from '../orchestrator/quarantine.ts';
 import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
+import { ClaudeResearcher, type Researcher } from '../orchestrator/research.ts';
 import type { AppPaths } from '../paths.ts';
 import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
+import { createResearchTools, type YouTube, YtDlp } from '../tools/research.ts';
 
 export interface BrainContext {
   gate: Gate;
@@ -63,6 +65,8 @@ export interface RuntimeOptions {
     calendar: CalendarProvider | null;
     summarizer?: Summarizer;
   };
+  /** Tests inject a fake research agent and YouTube access. */
+  research?: { researcher: Researcher | null; youtube: YouTube | null };
 }
 
 export interface AccountStatus {
@@ -258,6 +262,21 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   })) {
     gate.register(t);
   }
+
+  const ytdlp = YtDlp.locate();
+  const research = o.research ?? {
+    researcher: oauthToken
+      ? new ClaudeResearcher({
+          policy,
+          paths,
+          home: o.home,
+          oauthToken,
+          onViolation: (problem) => killswitch.engage(`research agent violation: ${problem}`),
+        })
+      : null,
+    youtube: ytdlp ? new YtDlp({ binary: ytdlp, scratch: paths.scratch }) : null,
+  };
+  for (const t of createResearchTools(research)) gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 
   const rt: Runtime = {

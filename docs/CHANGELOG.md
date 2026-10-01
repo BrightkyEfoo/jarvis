@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 — Recherche web et YouTube, avancées depuis le S13 (01/10/2026)
+
+### Ajouté
+- **`web_research`** : synthèse avec sources par un agent isolé (WebSearch côté Anthropic : aucune
+  page téléchargée, incluse dans l'abonnement). Mode `quick` (Sonnet) ou `deep` (Opus).
+- **`youtube_search`** et **`youtube_watch`** : Jarvis « regarde » une vidéo à partir de ses
+  sous-titres (sans télécharger la vidéo) et en fait un résumé horodaté, ou répond à une question.
+- yt-dlp installé via uv (environ 14 Mo, sans Deno ni Python 3.14).
+- **Tests** : 18 nouveaux, dont un faux binaire yt-dlp qui vérifie les arguments exacts.
+
+### Corrigé
+- Le schéma JSON de la quarantaine des mails était refusé par le CLI (format draft 2020-12) : la
+  quarantaine retombait silencieusement sur les métadonnées. Le schéma est maintenant au format
+  draft-07.
+
 ## 0.4.0 — Sprint 4 : mails, agenda, briefing, confirmations vocales, launchd (01/10/2026)
 
 ### Ajouté

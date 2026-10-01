@@ -28,6 +28,55 @@ import { startServer } from '../../apps/jarvisd/src/daemon/server.ts';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
 import type { Request } from '../../apps/jarvisd/src/ipc-schema.ts';
 import type { MailDigest, Summarizer } from '../../apps/jarvisd/src/orchestrator/quarantine.ts';
+import type {
+  Researcher,
+  ResearchRequest,
+  ResearchResult,
+} from '../../apps/jarvisd/src/orchestrator/research.ts';
+import type { VideoHit, VideoInfo, YouTube } from '../../apps/jarvisd/src/tools/research.ts';
+
+/** Records research requests; answers with a fixed, sourced result. */
+export class FakeResearcher implements Researcher {
+  readonly requests: ResearchRequest[] = [];
+  async research(req: ResearchRequest): Promise<ResearchResult> {
+    this.requests.push(req);
+    return {
+      answer: `Réponse à : ${req.question}`,
+      keyPoints: req.documents ? ['[00:30] point de la vidéo'] : ['point 1'],
+      sources: [
+        { title: 'Source', url: req.documents?.[0]?.source ?? 'https://example.org/article' },
+      ],
+      confidence: 'medium',
+      injectionSuspected: false,
+      model: req.depth === 'deep' ? 'claude-opus-5-5' : 'claude-sonnet-5-5',
+      ms: 1,
+    };
+  }
+}
+
+export class FakeYouTube implements YouTube {
+  async search(): Promise<VideoHit[]> {
+    return [
+      {
+        id: 'arj7oStGLkU',
+        title: 'Inside the Mind of a Master Procrastinator',
+        channel: 'TED',
+        durationS: 844,
+      },
+    ];
+  }
+  async fetch(id: string): Promise<VideoInfo> {
+    return {
+      id,
+      title: 'Inside the Mind of a Master Procrastinator',
+      channel: 'TED',
+      durationS: 844,
+      lang: 'en',
+      transcript: id === 'noSubtitles' ? '' : '[00:00] So in college…',
+    };
+  }
+}
+
 import { appPaths } from '../../apps/jarvisd/src/paths.ts';
 import type { MacOps } from '../../apps/jarvisd/src/tools/macos.ts';
 
@@ -163,6 +212,7 @@ export interface Harness {
   home: string;
   work: string;
   mac: FakeMac;
+  researcher: FakeResearcher;
   gmail: FakeMailbox;
   pro: FakeMailbox;
   calendar: FakeCalendar;
@@ -209,6 +259,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
   const gmail = new FakeMailbox('perso', 'brightkyefoo@gmail.com');
   const pro = new FakeMailbox('scriptify', 'brightky@scriptify.cm');
   const calendar = new FakeCalendar();
+  const researcher = new FakeResearcher();
   const rt = createRuntime({
     paths,
     home,
@@ -226,6 +277,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
       calendar,
       summarizer: new FakeSummarizer(),
     },
+    research: { researcher, youtube: new FakeYouTube() },
   });
   const server = await startServer(rt, paths.socket);
 
@@ -281,6 +333,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
     home,
     work,
     mac,
+    researcher,
     gmail,
     pro,
     calendar,
