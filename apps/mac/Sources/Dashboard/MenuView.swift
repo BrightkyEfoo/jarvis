@@ -83,9 +83,7 @@ struct MenuView: View {
                 if store.stopped {
                     Button("Reprendre…") { openDashboard() }
                 } else {
-                    Button(role: .destructive) { store.stop() } label: { Label("STOP", systemImage: "stop.fill") }
-                        .tint(.red)
-                        .buttonStyle(.borderedProminent)
+                    StopButton(source: "barre de menus")
                 }
                 Spacer()
                 Button("Tableau de bord") { openDashboard() }.keyboardShortcut("d")

@@ -201,7 +201,9 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   bundle), les sites bancaires et d'identité, la frappe dans un champ sécurisé et les touches
   système, même sur ordre du daemon.
 - **Arrêt** : ⌃⎋ global, STOP du daemon (`actuate_cancel` tue l'`osascript` en cours). Une seule
-  connexion peut répondre aux actions : celle qui s'est enregistrée.
+  connexion peut répondre aux actions : celle qui s'est enregistrée. Les boutons STOP de l'app
+  demandent deux clics, pour éviter un arrêt par erreur (la reprise exige le PIN). ⌃⎋ reste
+  immédiat. La raison enregistrée dit d'où vient l'arrêt.
 
 ## Zéro coût, zéro fuite de facturation
 

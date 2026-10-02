@@ -33,6 +33,9 @@ final class Controller {
     /// What Jarvis said last, to tell a follow-up from the room echo of its own voice.
     private var recentSpeech = ""
     private var followUpUntil = Date.distantPast
+    /// False after an error reply ("Jarvis est à l'arrêt"…): no follow-up window, or the room
+    /// noise heard next would get the same error again, in a loop.
+    private var followUp = true
     private var chunker = SpeechChunker()
     private var currentAsk: String?
     private var lang = "fr"
@@ -88,7 +91,7 @@ final class Controller {
                 } else if self.currentAsk == nil {
                     self.state = .idle
                     // Conversation: a follow-up does not need the name for a few seconds.
-                    if let wake = self.wake {
+                    if self.followUp, let wake = self.wake {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                             if self.state == .idle { self.listenWithoutName(for: 10, ear: wake) }
                         }
@@ -268,6 +271,7 @@ final class Controller {
     private func send(_ pick: Candidate) {
         lang = pick.lang
         print("🗣 [\(pick.lang)] \(pick.text)")
+        followUp = true
         let id = shortId()
         currentAsk = id
         chunker = SpeechChunker()
@@ -307,6 +311,7 @@ final class Controller {
             for sentence in chunker.flush() { say(sentence) }
             let data = msg["data"] as? [String: Any] ?? [:]
             if data["ok"] as? Bool == false, tFirstText == nil {
+                followUp = false
                 say(spokenError(data["error"] as? String ?? "error"))
             }
             currentAsk = nil
@@ -317,6 +322,7 @@ final class Controller {
             }
         case "error":
             currentAsk = nil
+            followUp = false
             say(spokenError(msg["error"] as? String ?? "error"))
         default:
             break
@@ -388,7 +394,11 @@ final class Controller {
         if error.contains("no Claude subscription token") {
             return lang == "fr" ? "Le token d'abonnement n'est pas configuré." : "The subscription token is not set up."
         }
-        if error.contains("STOP") { return lang == "fr" ? "Jarvis est à l'arrêt." : "Jarvis is stopped." }
+        if error.contains("STOP") {
+            return lang == "fr"
+                ? "Je suis à l'arrêt : STOP est enclenché. Pour reprendre, menu Jarvis, Reprendre, avec ton PIN."
+                : "I'm stopped: STOP is engaged. To resume, open the Jarvis menu, Resume, with your PIN."
+        }
         if error == "interrupted" { return "" }
         return lang == "fr" ? "Je n'ai pas pu répondre." : "I couldn't answer."
     }

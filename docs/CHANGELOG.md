@@ -2,6 +2,18 @@
 
 ## 0.13.0 — Tout connecter, appel plus naturel (02/10/2026)
 
+### Corrigé
+- **STOP accidentel** : le bouton STOP de la barre de menus, juste au-dessus de « Quitter »,
+  arrêtait Jarvis en un clic, et la reprise demande le PIN.
+  - Il faut maintenant deux clics en 4 s (« STOP » puis « Confirmer STOP »). Même chose dans le
+    tableau de bord, qui perd au passage le raccourci ⌘. (souvent tapé pour « annuler »).
+  - ⌃⎋ reste une seule touche.
+  - La raison indique la source (barre de menus, tableau de bord, ⌃⎋) dans l'audit et sur la
+    bannière.
+- **Jarvis à l'arrêt** : il dit maintenant comment reprendre (menu Jarvis → Reprendre, PIN). Après
+  une réponse d'erreur, il n'ouvre plus de fenêtre d'écoute sans le nom. Avant, le bruit de la
+  pièce y entrait et recevait la même erreur, en boucle.
+
 ### Ajouté (suite)
 - **Plusieurs comptes Gmail perso** :
   - `jarvis google connect` laisse choisir le compte et détecte l'adresse autorisée ;

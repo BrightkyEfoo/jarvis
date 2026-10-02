@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopKey = HotKey(keyCode: UInt32(kVK_Escape), modifiers: UInt32(controlKey), id: 2)
         stopKey?.onPress = { [weak self] in
             self?.actuator?.cancelAll()
-            self?.store.stop()
+            self?.store.stop(from: "⌃⎋")
         }
     }
 

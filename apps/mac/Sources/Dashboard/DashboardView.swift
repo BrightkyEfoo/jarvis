@@ -141,13 +141,7 @@ struct OverviewView: View {
                         }
                         Spacer()
                         if !store.stopped {
-                            Button(role: .destructive) { store.stop() } label: {
-                                Label("STOP", systemImage: "stop.fill").frame(minWidth: 80)
-                            }
-                            .controlSize(.large)
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
-                            .keyboardShortcut(".", modifiers: .command)
+                            StopButton(source: "tableau de bord", large: true)
                         }
                     }
                 }

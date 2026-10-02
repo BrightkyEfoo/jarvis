@@ -190,8 +190,9 @@ final class Store: ObservableObject {
 
     // MARK: - Actions (same commands as the CLI, channel "hud")
 
-    func stop() {
-        link?.request(["cmd": "stop", "reason": "STOP depuis le tableau de bord"]) { [weak self] _ in self?.refresh() }
+    /// `source` lands in the audit and on the STOP banner: "who stopped Jarvis?" has an answer.
+    func stop(from source: String) {
+        link?.request(["cmd": "stop", "reason": "STOP (\(source))"]) { [weak self] _ in self?.refresh() }
     }
 
     func resume(pin: String, completion: @escaping (String?) -> Void) {

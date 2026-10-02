@@ -44,6 +44,37 @@ struct Card<Content: View>: View {
     }
 }
 
+/// STOP needs two clicks within 4 s: one stray click (the menu puts it right above "Quitter")
+/// must not halt Jarvis, since resuming takes the PIN. ⌃⎋ stays a single keystroke.
+struct StopButton: View {
+    @EnvironmentObject var store: Store
+    let source: String
+    var large = false
+    @State private var armed = false
+    @State private var disarm: DispatchWorkItem?
+
+    var body: some View {
+        Button(role: .destructive) {
+            if armed {
+                disarm?.cancel()
+                armed = false
+                store.stop(from: source)
+            } else {
+                armed = true
+                let work = DispatchWorkItem { armed = false }
+                disarm = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
+            }
+        } label: {
+            Label(armed ? "Confirmer STOP" : "STOP", systemImage: "stop.fill").frame(minWidth: large ? 80 : nil)
+        }
+        .controlSize(large ? .large : .regular)
+        .buttonStyle(.borderedProminent)
+        .tint(armed ? .red : .red.opacity(0.75))
+        .help(armed ? "Clique encore pour tout arrêter (reprise avec le PIN)" : "Tout arrêter (deux clics)")
+    }
+}
+
 struct Signature: View {
     var text: String
 
