@@ -63,7 +63,14 @@ function openClient(): Promise<Client> {
   });
 }
 
-async function askHidden(question: string): Promise<string> {
+/**
+ * Secret input: shows • per character (never the secret), accepts pastes from any terminal and,
+ * with `clipboardFallback`, reads the clipboard when Enter is pressed on an empty line.
+ */
+async function askHidden(
+  question: string,
+  o: { clipboardFallback?: boolean } = {},
+): Promise<string> {
   const stdin = process.stdin;
   process.stdout.write(question);
   if (!stdin.isTTY) {
@@ -72,28 +79,30 @@ async function askHidden(question: string): Promise<string> {
     rl.close();
     return line.trim();
   }
-  return new Promise((resolve) => {
-    let value = '';
+  const { HiddenInput } = await import('./hidden-input.ts');
+  const typed = await new Promise<string>((resolve) => {
+    const input = new HiddenInput();
     stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding('utf8');
-    const onData = (ch: string) => {
-      for (const c of ch) {
-        if (c === '\r' || c === '\n') {
-          stdin.setRawMode(false);
-          stdin.pause();
-          stdin.off('data', onData);
-          process.stdout.write('\n');
-          resolve(value);
-          return;
-        }
-        if (c === '\u0003') process.exit(130);
-        if (c === '\u007f') value = value.slice(0, -1);
-        else value += c;
-      }
+    const onData = (chunk: string) => {
+      const r = input.feed(chunk);
+      if (r.echo) process.stdout.write(r.echo);
+      if (r.state === 'more') return;
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off('data', onData);
+      process.stdout.write('\n');
+      if (r.state === 'abort') process.exit(130);
+      resolve(input.value);
     };
     stdin.on('data', onData);
   });
+  if (typed || !o.clipboardFallback) return typed.trim();
+  const { execFileSync } = await import('node:child_process');
+  const clip = execFileSync('/usr/bin/pbpaste', { encoding: 'utf8' }).trim();
+  if (clip) console.log(dim(`(lu depuis le presse-papiers : ${clip.length} caractères)`));
+  return clip;
 }
 
 async function askLine(question: string): Promise<string> {
@@ -549,14 +558,33 @@ async function secretsCommand(
   const store = new KeychainStore();
 
   if (kind === 'auth' && sub === 'set-token') {
-    const token = await askHidden('Token (sortie de `claude setup-token`) : ');
-    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(token)) {
-      console.error(red('✖ format inattendu : attendu sk-ant-…'));
+    console.log(
+      dim(
+        'Colle le token puis Entrée — des • s’affichent, le token lui-même jamais.\n' +
+          'Ou : copie le token, puis appuie juste sur Entrée (lecture du presse-papiers).',
+      ),
+    );
+    // A token copied across two lines or with spaces around it is still one token.
+    const token = (
+      await askHidden('Token (sortie de `claude setup-token`) : ', { clipboardFallback: true })
+    ).replace(/\s+/g, '');
+    if (!/^sk-ant-[A-Za-z0-9_-]{40,}$/.test(token)) {
+      const hint =
+        token.length === 0
+          ? 'rien reçu'
+          : `reçu ${token.length} caractères qui ne commencent pas par sk-ant- ou sont trop courts`;
+      console.error(
+        red(
+          `✖ token non reconnu (${hint}). Relance claude setup-token et recopie la ligne sk-ant-oat01-… en entier.`,
+        ),
+      );
       process.exitCode = 1;
       return;
     }
     store.set(SecretName.claudeOauthToken, token);
-    console.log('✔ token enregistré dans le Trousseau. Redémarre le daemon.');
+    console.log(
+      `✔ token enregistré dans le Trousseau (${token.length} caractères). Redémarre le daemon : jarvis service install --app`,
+    );
     return;
   }
 
