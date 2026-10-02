@@ -18,6 +18,8 @@ export interface TrelloCard {
   name: string;
   board: string;
   list: string;
+  boardId: string;
+  listId: string;
   labels: string[];
   due: string | null;
   dueComplete: boolean;
@@ -117,6 +119,8 @@ export class TrelloClient {
       name: c.name,
       board,
       list,
+      boardId: c.idBoard,
+      listId: c.idList,
       labels: c.labels.map((l) => l.name || l.color || '').filter(Boolean),
       due: c.due,
       dueComplete: c.dueComplete,

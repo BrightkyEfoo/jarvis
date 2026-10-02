@@ -4,7 +4,7 @@ Assistant vocal et orchestrateur de développement pour macOS : une journée de 
 parler, pas à taper. Brightky décide, valide et relit ; Jarvis exécute, dans les limites que le
 code lui impose.
 
-**État : Sprint 4 + pilotage du Mac.** En place : le moteur de permissions, l'audit, le kill switch,
+**État : Sprints 0 à 7 (mois 2), voix neuronales et pilotage du Mac.** En place : le moteur de permissions, l'audit, le kill switch,
 les secrets, les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. Jarvis
 répond à la voix (push-to-talk, 100 % local, voix neuronales) en français et en anglais, lit Gmail, IMAP et
 l'agenda via un lecteur en quarantaine, fait le briefing du matin, rédige des brouillons et ne les
@@ -91,6 +91,7 @@ jarvis "qu'est-ce qui m'attend sur GitHub ?"    # PR à relire, mes PR (CI, rele
 jarvis "résume-moi la PR 7 de acme/app"           # diff expliqué en mots simples
 jarvis "ajoute le mode sombre à BrightkyEfoo/codevault"   # un worker code, teste, ouvre la PR
 jarvis workers                 # tâches des workers : en file, en cours, PR ouvertes
+jarvis "prends mes cartes Trello"                 # cartes « jarvis » → workers → PR → carte à relire
 jarvis "quelle heure est-il ?"
 jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "sur GitHub, ouvre la PR #7 de CodeVault et résume les commentaires"   # pilote Arc

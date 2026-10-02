@@ -313,6 +313,10 @@ export class FakeTrello {
   readonly moves: { id: string; list: string }[] = [];
   static readonly CARD = '5f0000000000000000000003';
   static readonly DONE = '5f0000000000000000000009';
+  static readonly BOARD = '5f0000000000000000000001';
+  static readonly TODO = '5f0000000000000000000002';
+  static readonly DOING = '5f0000000000000000000005';
+  static readonly REVIEW = '5f0000000000000000000006';
   async boards() {
     return [
       {
@@ -324,13 +328,22 @@ export class FakeTrello {
     ];
   }
   async lists() {
-    return [{ id: FakeTrello.DONE, name: 'Terminé' }];
+    return [
+      { id: FakeTrello.TODO, name: 'À faire' },
+      { id: FakeTrello.DOING, name: 'En cours' },
+      { id: FakeTrello.REVIEW, name: 'À relire' },
+      { id: FakeTrello.DONE, name: 'Terminé' },
+    ];
   }
+  /** Description of the card (tests set it to point at a repository). */
+  desc = 'Ajouter un thème sombre';
   async cards() {
     return [
       {
         id: FakeTrello.CARD,
         name: 'Mode sombre',
+        boardId: FakeTrello.BOARD,
+        listId: FakeTrello.TODO,
         board: 'CodeVault',
         list: 'À faire',
         labels: ['jarvis'],
@@ -347,7 +360,7 @@ export class FakeTrello {
     if (!first) throw new Error('no card');
     return {
       ...first,
-      desc: 'Ajouter un thème sombre',
+      desc: this.desc,
       checklists: [],
       comments: [],
     };

@@ -50,6 +50,8 @@ export interface WorkerManagerDeps {
   draftPr: boolean;
   /** Quota left for background work (the interactive reserve is kept for Brightky). */
   quotaOk: () => boolean;
+  /** Called once a task ends (Trello follow-up…); errors are logged, never fatal. */
+  onFinished?: (t: Task) => Promise<void>;
 }
 
 class Stop extends Error {}
@@ -63,6 +65,8 @@ export class WorkerManager {
   readonly #d: WorkerManagerDeps;
   readonly #running = new Map<string, AbortController>();
   readonly #promises = new Set<Promise<void>>();
+  /** Serialises git operations on a shared clone (clone, fetch, worktree add/remove). */
+  readonly #repoLocks = new Map<string, Promise<unknown>>();
   #timer: NodeJS.Timeout | null = null;
   #closing = false;
 
@@ -155,11 +159,17 @@ export class WorkerManager {
         step: 'préparation',
         startedAt: new Date().toISOString(),
       });
-      const p = this.#process(next, abort.signal).finally(() => {
-        this.#running.delete(next.id);
-        this.#promises.delete(p);
-        this.pump();
-      });
+      const p = this.#process(next, abort.signal)
+        .then(async () => {
+          const t = this.#d.store.get(next.id);
+          if (t && this.#d.onFinished && !this.#closing)
+            await this.#d.onFinished(t).catch(() => undefined);
+        })
+        .finally(() => {
+          this.#running.delete(next.id);
+          this.#promises.delete(p);
+          this.pump();
+        });
       this.#promises.add(p);
     }
   }
@@ -170,6 +180,17 @@ export class WorkerManager {
       this.pump();
     }, 60_000);
     this.#timer.unref();
+  }
+
+  #locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.#repoLocks.get(key) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(fn);
+    const tail = run.catch(() => undefined);
+    this.#repoLocks.set(key, tail);
+    void tail.then(() => {
+      if (this.#repoLocks.get(key) === tail) this.#repoLocks.delete(key);
+    });
+    return run;
   }
 
   #emit(t: Task): Task {
@@ -214,27 +235,33 @@ export class WorkerManager {
       auth = token ? { user: forge.gitUser, token } : undefined;
 
       // 1. Jarvis's own partial clone (never Brightky's working copies), then a fresh worktree.
-      repoDir = join(d.dir, 'repos', task.forge, ...task.repo.split('/'));
-      if (!existsSync(join(repoDir, '.git'))) {
-        mkdirSync(repoDir, { recursive: true, mode: 0o700 });
-        log(`clone ${task.repo}`);
-        await d.git.run(['clone', '--filter=blob:none', '--no-checkout', info.cloneUrl, repoDir], {
-          signal,
-          ...(auth && { auth }),
-        });
-      }
-      await d.git.run(
-        ['fetch', '--prune', info.cloneUrl, `+refs/heads/${base}:refs/remotes/origin/${base}`],
-        { cwd: repoDir, signal, ...(auth && { auth }) },
-      );
+      const dir = join(d.dir, 'repos', task.forge, ...task.repo.split('/'));
+      repoDir = dir;
       branch = `jarvis/${slug(task.title)}-${task.id}`;
       if (!BRANCH.test(branch) || branch === base) throw new Error(`branche invalide ${branch}`);
-      worktree = join(d.dir, 'worktrees', task.id);
-      await d.git.run(['worktree', 'add', '-b', branch, worktree, `origin/${base}`], {
-        cwd: repoDir,
-        signal,
-        ...(auth && { auth }),
+      const wt = join(d.dir, 'worktrees', task.id);
+      const b = branch;
+      const withAuth = { signal, ...(auth && { auth }) };
+      // Two workers on the same repository share the clone: its git operations take turns.
+      await this.#locked(dir, async () => {
+        if (!existsSync(join(dir, '.git'))) {
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+          log(`clone ${task.repo}`);
+          await d.git.run(
+            ['clone', '--filter=blob:none', '--no-checkout', info.cloneUrl, dir],
+            withAuth,
+          );
+        }
+        await d.git.run(
+          ['fetch', '--prune', info.cloneUrl, `+refs/heads/${base}:refs/remotes/origin/${base}`],
+          { cwd: dir, ...withAuth },
+        );
+        await d.git.run(['worktree', 'add', '-b', b, wt, `origin/${base}`], {
+          cwd: dir,
+          ...withAuth,
+        });
       });
+      worktree = wt;
       d.store.update(task.id, { base, branch });
 
       // 2. The worker codes, guarded tool by tool and sandboxed.
@@ -372,11 +399,13 @@ export class WorkerManager {
       );
     } finally {
       if (worktree && repoDir) {
-        await d.git
-          .run(['worktree', 'remove', '--force', worktree], { cwd: repoDir })
-          .catch(() => undefined);
-        if (branch)
-          await d.git.run(['branch', '-D', branch], { cwd: repoDir }).catch(() => undefined);
+        const [dir, wt, b] = [repoDir, worktree, branch];
+        await this.#locked(dir, async () => {
+          await d.git
+            .run(['worktree', 'remove', '--force', wt], { cwd: dir })
+            .catch(() => undefined);
+          if (b) await d.git.run(['branch', '-D', b], { cwd: dir }).catch(() => undefined);
+        });
       }
     }
   }

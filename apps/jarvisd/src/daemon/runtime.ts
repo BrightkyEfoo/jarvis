@@ -47,6 +47,7 @@ import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
 import { createResearchTools, type YouTube, YtDlp } from '../tools/research.ts';
+import { createTrelloWorkerTools, trelloFollowUp } from '../tools/trello-workers.ts';
 import { createWorkerTools } from '../tools/workers.ts';
 import { Git } from '../workers/git.ts';
 import { WorkerManager } from '../workers/manager.ts';
@@ -416,12 +417,43 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     draftPr: policy.workers.draft_pr,
     // Background work stops before eating the share kept for Brightky's own requests.
     quotaOk: () => (quota.get('five_hour')?.utilization ?? 0) < 1 - reserve,
+    onFinished: async (t) => {
+      const column = await trelloFollowUp({ trello: forges.trello, policy }, t).catch(
+        (e: Error) => {
+          audit.append({
+            event: 'result',
+            tool: 'trello_followup',
+            rule: 'trello.followup',
+            outcome: 'error',
+            data: { id: t.id, error: e.message },
+          });
+          return null;
+        },
+      );
+      if (column !== null) {
+        audit.append({
+          event: 'result',
+          tool: 'trello_followup',
+          level: 2,
+          rule: 'trello.followup',
+          outcome: 'ok',
+          data: { id: t.id, card: t.source, column, pr: t.prUrl },
+        });
+      }
+    },
   });
   for (const t of createWorkerTools({
     manager: workerManager,
     store: taskStore,
     policy,
     forges: () => [...forges.forges.keys()],
+  }))
+    gate.register(t);
+  for (const t of createTrelloWorkerTools({
+    trello: forges.trello,
+    manager: workerManager,
+    store: taskStore,
+    policy,
   }))
     gate.register(t);
   workerManager.pump();

@@ -41,6 +41,7 @@ enum Wording {
         (#"^Add reminder "([^"]*)""#, "Ajouter le rappel « $1 »"),
         (#"^Complete a reminder$"#, "Cocher un rappel"),
         (#"^Read a note$"#, "Lire une note"),
+        (#"^Take up to (\d+) Trello cards labelled ([^:\s]+).*$"#, "Prendre jusqu'à $1 cartes Trello « $2 » : un worker par carte, carte en cours puis lien de la PR et carte à relire"),
         (#"^Start a worker on (\S+): "#, "Lancer un worker sur $1 : "),
         (#"^Workers status$"#, "État des workers"),
         (#"^Cancel worker task "#, "Annuler la tâche "),

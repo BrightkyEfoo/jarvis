@@ -42,6 +42,22 @@ daemon. Après chaque connexion, redémarre le daemon (`jarvis service install` 
 2. Sur la même page, clique sur le lien **Token** et autorise la lecture et l'écriture.
 3. Lance `jarvis trello connect`, puis colle la clé et le token.
 
+## Cartes Trello → workers (S7)
+
+1. Étiquette une carte **`jarvis`** (`forges.trello_label` dans la politique).
+2. Indique le dépôt, au choix :
+   - une ligne `repo: owner/repo` dans la description de la carte (`repo: gitlab:groupe/projet`
+     pour GitLab) ;
+   - une correspondance tableau → dépôt dans `forges.trello_boards`.
+3. Dis « prends mes cartes Trello ». Tu valides une fois pour tout le lot. Ensuite, chaque carte
+   suit ce cycle :
+   - elle passe dans « En cours » et un worker s'en charge ;
+   - quand la PR est ouverte, elle reçoit le lien de la PR et passe dans « À relire ».
+
+   Les noms de colonnes reconnus se règlent avec `forges.trello_doing` et
+   `forges.trello_review`.
+4. Pour écouter le résultat : « relis-moi la PR du mode sombre ».
+
 ## Ce que Jarvis fait avec
 
 | Action | Niveau |

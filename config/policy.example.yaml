@@ -109,11 +109,14 @@ forges:
   gitlab_url: https://gitlab.com
   max_diff_chars: 60000
   trello_label: jarvis
+  # Board → repository for cards taken by workers (a card can say "repo: owner/repo" instead).
+  # Example: { CodeVault: BrightkyEfoo/codevault, Site Scriptify: "gitlab:scriptify/site" }
+  trello_boards: {}
 
 # Claude Code workers (S6): one git worktree per task, macOS sandbox for the shell, one clean
 # commit in Brightky's name, push to a jarvis/… branch, PR opened (never merged).
 workers:
-  max_parallel: 1 # Max 5x: 2 at most is comfortable
+  max_parallel: 2 # Max 5x: 2 is comfortable, 3 at most
   model: claude-sonnet-5-5 # "complex" tasks use models.planning (Opus)
   max_turns: 150
   max_budget_usd: 15 # anti-runaway cap per task, API-equivalent (the subscription pays)

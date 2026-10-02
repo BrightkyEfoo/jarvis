@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.0 — S7 : de Trello aux workers, en parallèle (02/10/2026)
+
+### Ajouté
+- **`trello_take`** (ADR-028) : les cartes étiquetées `jarvis` partent chez des workers, avec une
+  seule validation pour le lot. Chaque carte passe en « En cours » ; à la fin, elle reçoit le lien
+  de la PR et passe en « À relire ».
+- **Dépôt d'une carte** : ligne `repo: owner/repo` dans la carte, ou correspondance
+  `forges.trello_boards`. Noms des colonnes réglables.
+- **Parallélisme** : 2 workers par défaut. Un verrou par dépôt sérialise les opérations git
+  partagées.
+- **Tests** : 3 tests e2e (lot Trello, carte sans dépôt, 2 workers en parallèle), 2 tests de
+  correspondance carte → dépôt et 1 test Swift.
+
+### Corrigé
+- **Course entre deux workers** sur le même dépôt (clone et fetch simultanés), trouvée par le
+  test de parallélisme.
+
 ## 0.10.0 — S6 : workers Claude Code (02/10/2026)
 
 ### Ajouté

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
 import type {
   WorkerOutcome,
@@ -72,6 +72,9 @@ function makeOrigin(h: Harness): string {
   return bare;
 }
 
+// Real git operations (clone, worktree, push) take a few hundred ms each.
+vi.setConfig({ testTimeout: 30_000 });
+
 let h: Harness;
 let runner: ScriptedRunner;
 afterEach(async () => {
@@ -91,6 +94,25 @@ async function ask(script: string) {
   c.close();
   return text(r.events);
 }
+/** Asks, approving every confirmation that shows up (Brightky saying yes). */
+async function askApproved(script: string) {
+  const c = await h.rpc();
+  const pending = c.call({ cmd: 'ask', text: script });
+  let finished = false;
+  void pending.then(() => {
+    finished = true;
+  });
+  const approver = await h.rpc();
+  while (!finished) {
+    const req = h.rt.approvals.pending()[0];
+    if (req) await approver.call({ cmd: 'approve', approvalId: req.id });
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  approver.close();
+  c.close();
+  return text((await pending).events);
+}
+
 async function until(id: string, status: string[], timeoutMs = 20_000) {
   const t0 = Date.now();
   for (;;) {
@@ -220,7 +242,7 @@ describe('workers (S6)', () => {
     await until(first, ['running']);
     await ask('call worker_start {"repo":"acme/app","task":"Tâche numéro deux en attente"}');
     const second = lastId();
-    expect(await ask('call worker_status {}')).toMatch(/en file[\s\S]*en cours/);
+    expect(await ask('call worker_status {}')).toMatch(/en cours[\s\S]*en cours/);
     h.rt.stop('test');
     expect((await until(first, ['cancelled', 'failed'])).status).toBe('cancelled');
     expect((await until(second, ['cancelled'])).status).toBe('cancelled');
@@ -248,5 +270,98 @@ describe('workers (S6)', () => {
     ).toContain("gitlab n'est pas connecté");
     await ask('call worker_start {"repo":"acme/inconnu","task":"Tâche sur un dépôt inconnu"}');
     expect(await until(lastId(), ['failed'])).toMatchObject({ error: 'no such repo acme/inconnu' });
+  });
+});
+
+describe('Trello → workers (S7)', () => {
+  it('takes the labelled cards in one confirmation, moves them, then posts the PR link and moves to review', async () => {
+    await setup();
+    h.trello.desc = 'Ajouter un thème sombre.\nrepo: acme/app';
+    runner.script = async (r) => {
+      write(r, 'src/theme.ts', 'export const dark = true;\n');
+      return done('Ajoute le mode sombre');
+    };
+    const c = await h.rpc();
+    const pending = c.call({ cmd: 'ask', text: 'call trello_take {}' });
+    const { FakeTrello } = await import('./harness.ts');
+    const req = await (async () => {
+      for (let i = 0; i < 200; i++) {
+        const r = h.rt.approvals.pending()[0];
+        if (r) return r;
+        await new Promise((x) => setTimeout(x, 10));
+      }
+      throw new Error('no approval');
+    })();
+    expect(req).toMatchObject({ level: 2, rule: 'trello.take' });
+    expect(req.summary).toContain('card → En cours, then PR link + card → À relire');
+    await (await h.rpc()).call({ cmd: 'approve', approvalId: req.id });
+    const out = text((await pending).events);
+    expect(out).toContain('1 carte(s) confiée(s) aux workers :');
+    expect(out).toMatch(
+      /« Mode sombre » → acme\/app \(tâche [a-f0-9]{8}\), carte dans « En cours »/,
+    );
+    expect(h.trello.moves[0]).toEqual({ id: FakeTrello.CARD, list: FakeTrello.DOING });
+
+    const t = await until(lastId(), ['done', 'failed']);
+    expect(t).toMatchObject({
+      status: 'done',
+      source: `trello:${FakeTrello.CARD}`,
+      external: true,
+    });
+    expect(runner.runs[0]?.task).toContain('Ajouter un thème sombre.');
+    expect(runner.runs[0]?.task).not.toContain('repo: acme/app');
+    for (let i = 0; i < 100 && h.trello.comments.length === 0; i++)
+      await new Promise((x) => setTimeout(x, 20));
+    expect(h.trello.comments).toEqual([
+      { id: FakeTrello.CARD, text: 'PR : https://github.com/acme/app/pull/41' },
+    ]);
+    expect(h.trello.moves.at(-1)).toEqual({ id: FakeTrello.CARD, list: FakeTrello.REVIEW });
+
+    // Already taken: not taken twice.
+    expect(await askApproved('call trello_take {}')).toContain(
+      'Aucune nouvelle carte étiquetée « jarvis »',
+    );
+    c.close();
+  });
+
+  it('cards without a repository are skipped with the fix', async () => {
+    await setup();
+    h.trello.desc = 'Pas de dépôt ici';
+    const c = await h.rpc();
+    const pending = c.call({ cmd: 'ask', text: 'call trello_take {}' });
+    for (let i = 0; i < 200 && h.rt.approvals.pending().length === 0; i++)
+      await new Promise((x) => setTimeout(x, 10));
+    await (await h.rpc()).call({
+      cmd: 'approve',
+      approvalId: h.rt.approvals.pending()[0]?.id ?? '',
+    });
+    const out = text((await pending).events);
+    expect(out).toContain('Aucune carte confiée.');
+    expect(out).toContain('pas de dépôt — ajoute « repo: owner/repo »');
+    expect(h.trello.moves).toHaveLength(0);
+    c.close();
+  });
+
+  it('runs two workers in parallel (workers.max_parallel: 2)', async () => {
+    await setup();
+    let started = 0;
+    let release: () => void = () => undefined;
+    const both = new Promise<void>((r) => {
+      release = r;
+    });
+    runner.script = async (r) => {
+      started += 1;
+      if (started === 2) release();
+      await both;
+      write(r, `f${started}.txt`, 'x');
+      return done('Parallèle');
+    };
+    await ask('call worker_start {"repo":"acme/app","task":"Première tâche en parallèle"}');
+    await ask('call worker_start {"repo":"acme/app","task":"Seconde tâche en parallèle"}');
+    await both;
+    expect(started).toBe(2);
+    const ids = h.rt.workers.store.list(2).map((t) => t.id);
+    for (const id of ids) expect((await until(id, ['done', 'failed'])).status).toBe('done');
+    expect(h.forge.opened).toHaveLength(2);
   });
 });

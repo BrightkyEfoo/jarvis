@@ -156,6 +156,15 @@ export const PolicySchema = z
         max_diff_chars: z.number().int().min(2_000).max(200_000).prefault(60_000),
         /** Trello label that marks cards Jarvis may take (S7). */
         trello_label: z.string().max(40).prefault('jarvis'),
+        /** Board name → repository its cards are about (a card can override with "repo: owner/repo"). */
+        trello_boards: z.record(z.string().max(200), z.string().max(200)).prefault({}),
+        /** Column names (case-insensitive) where taken cards go, then where finished ones go. */
+        trello_doing: z
+          .array(z.string().max(100))
+          .prefault(['En cours', 'Doing', 'In progress', 'WIP']),
+        trello_review: z
+          .array(z.string().max(100))
+          .prefault(['À relire', 'A relire', 'Review', 'Code review', 'En revue', 'QA']),
       })
       .strict()
       .prefault({}),

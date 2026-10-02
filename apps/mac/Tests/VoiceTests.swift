@@ -95,6 +95,8 @@ enum VoiceTests {
         check(Wording.fr("Comment on forge acme/app#7: LGTM") == "Commenter acme/app#7 : LGTM", "forge comment fr", Wording.fr("Comment on forge acme/app#7: LGTM"))
         check(Wording.fr("Move Trello card 5f0000000000000000000003 to list 5f0000000000000000000009") == "Déplacer la carte Trello", "trello move fr")
         check(Wording.fr("Read PR acme/app#7") == "Lire la PR acme/app#7", "read pr fr")
+        check(Wording.fr("Take up to 5 Trello cards labelled jarvis: one worker each, card → En cours, then PR link + card → À relire")
+                == "Prendre jusqu'à 5 cartes Trello « jarvis » : un worker par carte, carte en cours puis lien de la PR et carte à relire", "trello take fr")
         check(Wording.fr("Start a worker on acme/app: Ajoute le mode sombre") == "Lancer un worker sur acme/app : Ajoute le mode sombre", "worker fr")
 
         // Computer control guard, independent of the daemon.

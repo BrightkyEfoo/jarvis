@@ -703,3 +703,25 @@ de streaming), Qwen3-TTS et Kyutai TTS 1,6 B (trop lourds pour le M1 Pro avec le
 **Non testé en réel** : l'agent Claude Code lui-même. Il faut le token d'abonnement (`jarvis auth
 set-token`) et un token GitHub, ce qui consomme du quota. C'est la première chose à faire avec
 Brightky.
+
+## ADR-028 — S7 : des cartes Trello aux workers, en parallèle (02/10/2026)
+
+- **`trello_take`** (N2, **une validation pour le lot**) prend les cartes étiquetées `jarvis` sur
+  tous les tableaux ouverts (5 au plus par appel). Les cartes déjà prises ne sont jamais reprises.
+- **Dépôt de la carte** : ligne `repo: owner/repo` (préfixe `gitlab:` possible) dans la
+  description, sinon la correspondance `forges.trello_boards`. Les chemins contenant `..` sont
+  refusés. Une carte sans dépôt est ignorée, avec l'indication de la correction à faire.
+- **Consigne du worker** : titre, description, checklist et lien de la carte, **toujours
+  encadrés comme donnée externe** (une carte peut être écrite par n'importe quel membre du
+  tableau).
+- **Cycle de la carte** :
+  - au départ, elle passe dans « En cours » ;
+  - quand la PR est ouverte, elle reçoit un commentaire « PR : <lien> » et passe dans
+    « À relire ». Ce commentaire est au nom de Brightky, sans mention de Jarvis (ADR-023) ;
+  - en cas d'échec, la carte reste en cours et Brightky est prévenu par le tableau de bord ou la
+    voix. Aucun détail d'erreur n'est publié pour l'équipe.
+- **Parallélisme** : `workers.max_parallel` vaut 2 par défaut dans l'exemple (3 au plus avec
+  l'abonnement Max 5x). Un **verrou par dépôt** sérialise clone, fetch et worktree : un test en
+  parallèle a révélé la course.
+- **Relecture vocale** : `worker_status` donne la PR, puis `pr_read` permet à Jarvis d'expliquer
+  le diff en mots simples.
