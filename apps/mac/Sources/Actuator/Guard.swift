@@ -26,10 +26,18 @@ enum ActGuard {
         "moniteur d’activité", "console", "1password", "bitwarden", "lastpass", "dashlane", "keepassxc", "jarvis",
     ]
 
+    /// Never looked at, driven, quit or captured: shells, settings, credentials, Jarvis itself.
+    static func isForbidden(bundle: String?, name: String?) -> Bool {
+        if let bundle, forbiddenBundles.contains(bundle) { return true }
+        return forbiddenNames.contains((name ?? "").lowercased())
+    }
+
+    static func isForbidden(_ app: NSRunningApplication) -> Bool {
+        isForbidden(bundle: app.bundleIdentifier, name: app.localizedName)
+    }
+
     static func check(app: NSRunningApplication) throws {
-        let name = (app.localizedName ?? "").lowercased()
-        if let id = app.bundleIdentifier, forbiddenBundles.contains(id) { throw Refused(message: "\(app.localizedName ?? id) n'est jamais piloté") }
-        if forbiddenNames.contains(name) { throw Refused(message: "\(app.localizedName ?? name) n'est jamais piloté") }
+        if isForbidden(app) { throw Refused(message: "\(app.localizedName ?? app.bundleIdentifier ?? "cette app") n'est jamais piloté") }
     }
 
     private static let forbiddenHosts = ["paypal.com", "stripe.com", "wise.com", "revolut.com", "1password.com", "lastpass.com",

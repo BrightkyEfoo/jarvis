@@ -19,7 +19,13 @@ import {
   type ToolDef,
 } from '@jarvis/policy';
 import { z } from 'zod';
-import type { Actuator, ActuatorAction, BrowserApp } from '../computer/bridge.ts';
+import {
+  type Actuator,
+  type ActuatorAction,
+  type BrowserApp,
+  WINDOW_ACTIONS,
+  type WindowAction,
+} from '../computer/bridge.ts';
 
 // ── What Jarvis.app answers. Validated: the app is trusted, the pages it reads are not. ──
 
@@ -27,6 +33,14 @@ const label = z
   .string()
   .max(2000)
   .transform((s) => s.replace(/\s+/g, ' ').trim().slice(0, 120));
+
+/** Window titles come from other people's content (mail subjects, chats, pages). */
+const title = z
+  .string()
+  .max(2000)
+  .transform((s) => s.replace(/\s+/g, ' ').trim().slice(0, 200));
+const px = z.number().int();
+const names = z.array(z.string().max(100)).max(50);
 
 const PageElement = z.object({
   id: z.number().int().nonnegative(),
@@ -119,6 +133,54 @@ const Results = {
       .max(400)
       .default([]),
   }),
+  display: z.object({
+    display: z.number().int().positive(),
+    displays: z.number().int().positive(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    image: z.string().min(1).max(12_000_000),
+    windows: z
+      .array(z.object({ app: z.string().max(100), title, x: px, y: px, width: px, height: px }))
+      .max(100)
+      .default([]),
+  }),
+  windows: z.object({
+    displays: z
+      .array(z.object({ index: z.number().int().positive(), width: px, height: px }))
+      .max(16),
+    windows: z
+      .array(
+        z.object({
+          app: z.string().max(100),
+          display: z.number().int().nonnegative(),
+          protected: z.boolean(),
+          title: title.optional(),
+          x: px,
+          y: px,
+          width: px,
+          height: px,
+        }),
+      )
+      .max(300),
+    apps: z
+      .array(
+        z.object({
+          app: z.string().max(100),
+          active: z.boolean(),
+          hidden: z.boolean(),
+          windows: z.number().int().nonnegative(),
+          protected: z.boolean(),
+        }),
+      )
+      .max(200),
+  }),
+  quit: z.object({
+    quit: names,
+    still_running: names,
+    refused: names,
+    not_running: names,
+  }),
+  managed: z.object({ app: z.string().max(100) }),
   probe: z.object({
     /** App owning the element under the point (or focused), and the app that was asked for. */
     app: z.string().max(100),
@@ -172,6 +234,22 @@ function describeElement(e: PageElement): string {
 
 /** The app name Jarvis.app is asked to act in; matched case-insensitively there. */
 const APP_NAME = /^[\p{L}\p{N} ._+&()'-]{1,60}$/u;
+
+const WINDOW_SUMMARY: Record<WindowAction, string> = {
+  front: 'Bring {app} to the front',
+  hide: 'Hide {app}',
+  show: 'Show {app}',
+  minimize: 'Minimize {app}',
+  restore: 'Restore {app}',
+  fullscreen: 'Toggle full screen for {app}',
+  maximize: 'Maximize {app}',
+  left: 'Snap {app} to the left half',
+  right: 'Snap {app} to the right half',
+  top: 'Snap {app} to the top half',
+  bottom: 'Snap {app} to the bottom half',
+  center: 'Center {app}',
+  close: 'Close the front window of {app}',
+};
 
 export interface ComputerToolDeps {
   policy: Policy;
@@ -578,18 +656,53 @@ export function createComputerTools(d: ComputerToolDeps): ToolDef[] {
     name: 'screen_look',
     description:
       'Screenshot the front window of an app (default: the frontmost app) with its labelled controls as ' +
-      '[n] (x, y). Coordinates are image pixels, for screen_act. Never captures Terminal, settings, ' +
-      'password managers or Jarvis.',
-    input: { app: z.string().max(60).optional() },
-    classify: (a): Classification =>
-      (a.app && appGuard(a.app)) || {
-        level: N0,
-        rule: 'computer.screen.look',
-        reason: 'looks at a window',
-      },
-    summarize: (a) => `Look at ${a.app ?? 'the frontmost app'}`,
+      '[n] (x, y). Coordinates are image pixels, for screen_act. With display (1 = the screen with the ' +
+      'menu bar) instead of app: the whole screen and where each window is — to see what Brightky sees; ' +
+      'look at the app itself before acting in it. Terminal, settings, password managers and Jarvis are ' +
+      'never captured (on a whole screen they are left out of the picture).',
+    input: {
+      app: z.string().max(60).optional(),
+      display: z.number().int().min(1).max(8).optional(),
+    },
+    classify: (a): Classification => {
+      if (a.app && a.display !== undefined)
+        return forbid('input.invalid', 'look at an app or a display, not both');
+      if (a.display !== undefined)
+        return { level: N0, rule: 'computer.screen.look_display', reason: 'looks at a screen' };
+      return (
+        (a.app && appGuard(a.app)) || {
+          level: N0,
+          rule: 'computer.screen.look',
+          reason: 'looks at a window',
+        }
+      );
+    },
+    summarize: (a) =>
+      a.display !== undefined
+        ? `Look at display ${a.display}`
+        : `Look at ${a.app ?? 'the frontmost app'}`,
     ingestsExternal: true,
     run: async (a, ctx) => {
+      if (a.display !== undefined) {
+        const r = await perform(
+          Results.display,
+          { kind: 'screen.look', display: a.display },
+          ctx.signal,
+          20_000,
+        );
+        const list = r.windows
+          .map(
+            (w) =>
+              `- ${w.app}${w.title ? ` — "${w.title}"` : ''} @ (${w.x}, ${w.y}) ${w.width}×${w.height}`,
+          )
+          .join('\n');
+        return {
+          text:
+            `Display ${r.display} of ${r.displays} — image ${r.width}×${r.height} px. Windows, front to back:\n` +
+            `${list || '(none)'}\nProtected apps are not in the picture. Before acting in an app: screen_look {app}.`,
+          images: [{ data: r.image, mimeType: 'image/jpeg' as const }],
+        };
+      }
       const r = await perform(
         Results.look,
         { kind: 'screen.look', ...(a.app && { app: a.app }) },
@@ -766,6 +879,129 @@ export function createComputerTools(d: ComputerToolDeps): ToolDef[] {
     },
   });
 
+  // ── The desk: windows, displays, quitting and arranging apps ──
+
+  const windowsList = defineTool({
+    name: 'windows_list',
+    description:
+      'What is open on the Mac: the displays (1 = the one with the menu bar), every visible window ' +
+      'front to back with its app and title, and the apps with no visible window (hidden or ' +
+      'minimized). Use it before closing or arranging apps "on the first screen". Protected apps ' +
+      '(shells, settings, credentials, Jarvis) show without titles and are never touched.',
+    input: {},
+    classify: () => ({ level: N0, rule: 'computer.windows.list', reason: 'read-only' }),
+    summarize: () => 'List open windows',
+    ingestsExternal: true,
+    run: async (_a, ctx) => {
+      const r = await perform(Results.windows, { kind: 'apps.windows' }, ctx.signal);
+      const lines = [
+        `Displays: ${r.displays.map((d) => `${d.index} (${d.width}×${d.height}${d.index === 1 ? ', menu bar' : ''})`).join(', ') || 'none'}`,
+      ];
+      for (const d of r.displays) {
+        const here = r.windows.filter((w) => w.display === d.index);
+        lines.push(`Display ${d.index}, front to back:`);
+        for (const w of here) {
+          lines.push(
+            w.protected
+              ? `- ${w.app} [protected]`
+              : `- ${w.app}${w.title ? ` — "${w.title}"` : ''} @ (${w.x}, ${w.y}) ${w.width}×${w.height}`,
+          );
+        }
+        if (here.length === 0) lines.push('- (no window)');
+      }
+      const front = r.apps.find((a) => a.active);
+      if (front) lines.push(`Frontmost app: ${front.app}`);
+      const idle = r.apps.filter((a) => a.windows === 0);
+      if (idle.length) {
+        lines.push(
+          `Open without a visible window: ${idle
+            .map(
+              (a) => `${a.app}${a.hidden ? ' (hidden)' : ''}${a.protected ? ' [protected]' : ''}`,
+            )
+            .join(', ')}`,
+        );
+      }
+      return lines.join('\n');
+    },
+  });
+
+  const appQuit = defineTool({
+    name: 'app_quit',
+    description:
+      'Quit apps the way ⌘Q does (never forced): an app with unsaved work asks Brightky to save and ' +
+      'stays open. Put every app in ONE call so Brightky confirms once (e.g. "close everything on ' +
+      'the first screen": windows_list, then app_quit with those apps). Protected apps and Finder ' +
+      'are never quit: leave them out.',
+    input: { apps: z.array(z.string().min(1).max(60)).min(1).max(30) },
+    classify: (a): Classification => {
+      for (const app of a.apps) {
+        const guard = appGuard(app);
+        if (guard) return guard;
+      }
+      return {
+        level: N2,
+        rule: 'computer.app.quit',
+        reason: 'closes apps (unsaved work is not lost: the app asks to save)',
+      };
+    },
+    summarize: (a) => `Quit ${[...new Set(a.apps)].join(', ')}`,
+    run: async (a, ctx) => {
+      const r = await perform(
+        Results.quit,
+        { kind: 'apps.quit', apps: [...new Set(a.apps)] },
+        ctx.signal,
+        20_000,
+      );
+      for (const app of r.quit) screens.delete(app.toLowerCase());
+      const parts = [];
+      if (r.quit.length) parts.push(`Quit: ${r.quit.join(', ')}.`);
+      if (r.still_running.length)
+        parts.push(
+          `Still open (probably asking whether to save — Brightky answers that himself): ${r.still_running.join(', ')}.`,
+        );
+      if (r.not_running.length) parts.push(`Not running: ${r.not_running.join(', ')}.`);
+      if (r.refused.length) parts.push(`Never quit: ${r.refused.join(', ')}.`);
+      return parts.join(' ') || 'Nothing to quit.';
+    },
+  });
+
+  const windowManage = defineTool({
+    name: 'window_manage',
+    description:
+      'Arrange an app or its front window: front (bring it forward), hide / show the app, minimize / ' +
+      'restore, fullscreen (toggle), maximize, left / right / top / bottom half, center, or close ' +
+      "(the window's red button: unsaved work asks to save). display (windows_list numbers them) " +
+      'moves the window there with maximize, the halves and center.',
+    input: {
+      app: z.string().min(1).max(60),
+      action: z.enum(WINDOW_ACTIONS),
+      display: z.number().int().min(1).max(8).optional(),
+    },
+    classify: (a): Classification =>
+      appGuard(a.app) ??
+      (a.action === 'close'
+        ? { level: N2, rule: 'computer.window.close', reason: 'closes a window' }
+        : { level: N1, rule: 'computer.window', reason: 'moves, shows or hides a window' }),
+    summarize: (a) =>
+      `${WINDOW_SUMMARY[a.action].replace('{app}', a.app)}${a.display ? ` on display ${a.display}` : ''}`,
+    run: async (a, ctx) => {
+      const r = await perform(
+        Results.managed,
+        {
+          kind: 'window.manage',
+          app: a.app,
+          action: a.action,
+          ...(a.display !== undefined && { display: a.display }),
+        },
+        ctx.signal,
+      );
+      // The window moved: coordinates from the last look are stale.
+      screens.delete(a.app.toLowerCase());
+      screens.delete(r.app.toLowerCase());
+      return `Done: ${WINDOW_SUMMARY[a.action].replace('{app}', r.app).toLowerCase()}.`;
+    },
+  });
+
   return [
     browserTabs,
     browserOpen,
@@ -782,5 +1018,8 @@ export function createComputerTools(d: ComputerToolDeps): ToolDef[] {
     remindersComplete,
     screenLook,
     screenAct,
+    windowsList,
+    appQuit,
+    windowManage,
   ] as unknown as ToolDef[];
 }

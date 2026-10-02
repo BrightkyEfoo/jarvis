@@ -196,7 +196,16 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 - **Taint** : tout affichage (page, capture, note) teinte la session. Ensuite, N3 est refusé et
   N2 exige un humain.
 - **Captures** : envoyées au modèle, jamais écrites dans l'audit (empreinte et taille seulement).
-  Les apps interdites ne sont jamais capturées.
+  Les apps interdites ne sont jamais capturées. Sur un écran entier, elles sont exclues de
+  l'image par ScreenCaptureKit.
+- **Le bureau** (ADR-030) :
+  - lister les fenêtres et regarder un écran : N0 ;
+  - ranger, masquer ou réduire une fenêtre : N1 ;
+  - fermer une fenêtre ou quitter des apps : N2, une validation pour la liste entière.
+
+  Quitter se fait comme ⌘Q, jamais de force : du travail non enregistré fait apparaître la
+  question d'enregistrement, et l'app reste ouverte. Les apps interdites et le Finder ne sont
+  jamais quittés ni rangés.
 - **Défense en profondeur** : l'app refuse d'elle-même les apps interdites (par identifiant de
   bundle), les sites bancaires et d'identité, la frappe dans un champ sécurisé et les touches
   système, même sur ordre du daemon.

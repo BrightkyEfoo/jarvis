@@ -59,6 +59,16 @@ function answer(a: ActuatorAction): unknown {
     case 'browser.fill':
       return { url: PAGE.url };
     case 'screen.look':
+      if (a.display !== undefined) {
+        return {
+          display: a.display,
+          displays: 2,
+          width: 1512,
+          height: 982,
+          image: 'B'.repeat(200_000),
+          windows: [{ app: 'Safari', title: 'GitHub', x: 0, y: 30, width: 1200, height: 900 }],
+        };
+      }
       return { ...LOOK, app: a.app ?? 'WhatsApp' };
     case 'screen.probe': {
       const target = a.app.toLowerCase() === 'textedit' ? 'TextEdit' : 'WhatsApp';
@@ -67,6 +77,51 @@ function answer(a: ActuatorAction): unknown {
     }
     case 'screen.act':
       return {};
+    case 'apps.windows':
+      return {
+        displays: [
+          { index: 1, width: 1512, height: 982 },
+          { index: 2, width: 1920, height: 1080 },
+        ],
+        windows: [
+          {
+            app: 'Safari',
+            display: 1,
+            protected: false,
+            title: 'GitHub   —  PR',
+            x: 0,
+            y: 30,
+            width: 1200,
+            height: 900,
+          },
+          { app: 'Terminal', display: 1, protected: true, x: 10, y: 40, width: 800, height: 500 },
+          {
+            app: 'Slack',
+            display: 2,
+            protected: false,
+            title: 'général',
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1050,
+          },
+        ],
+        apps: [
+          { app: 'Safari', active: true, hidden: false, windows: 1, protected: false },
+          { app: 'Terminal', active: false, hidden: false, windows: 1, protected: true },
+          { app: 'Slack', active: false, hidden: false, windows: 1, protected: false },
+          { app: 'Mail', active: false, hidden: true, windows: 0, protected: false },
+        ],
+      };
+    case 'apps.quit':
+      return {
+        quit: a.apps.filter((n) => n !== 'TextEdit'),
+        still_running: a.apps.filter((n) => n === 'TextEdit'),
+        refused: [],
+        not_running: [],
+      };
+    case 'window.manage':
+      return { app: a.app };
     default:
       throw new Error(`unexpected ${a.kind}`);
   }
@@ -301,6 +356,83 @@ describe('screen (any app)', () => {
     );
     expect(out).toContain('OK Done in TextEdit');
     expect(h.rt.approvals.pending()).toHaveLength(0);
+  });
+});
+
+describe('the desk (windows, displays, quitting)', () => {
+  it('lists windows per display; protected apps without titles; taints the session', async () => {
+    const out = await ask('call windows_list {}');
+    expect(out).toContain('Displays: 1 (1512×982, menu bar), 2 (1920×1080)');
+    expect(out).toContain('- Safari — "GitHub — PR" @ (0, 30) 1200×900');
+    expect(out).toContain('- Terminal [protected]');
+    expect(out).toContain('Open without a visible window: Mail (hidden)');
+    expect(h.rt.brain?.session.tainted).toBe(true);
+  });
+
+  it('quits apps in one confirmation, like ⌘Q; an app asking to save stays open', async () => {
+    const c = await h.rpc();
+    const pending = c.call({
+      cmd: 'ask',
+      text: 'call app_quit {"apps":["Safari","Slack","TextEdit","Safari"]}',
+    });
+    const req = await waitFor(() => h.rt.approvals.pending()[0]);
+    expect(req).toMatchObject({
+      level: 2,
+      rule: 'computer.app.quit',
+      summary: 'Quit Safari, Slack, TextEdit',
+    });
+    expect(sent('apps.quit')).toHaveLength(0);
+    await (await h.rpc()).call({ cmd: 'approve', approvalId: req.id });
+    const out = text((await pending).events);
+    expect(out).toContain('Quit: Safari, Slack.');
+    expect(out).toContain('Still open (probably asking whether to save');
+    expect(sent('apps.quit')[0]).toMatchObject({ apps: ['Safari', 'Slack', 'TextEdit'] });
+    c.close();
+  });
+
+  it('never quits or arranges protected apps', async () => {
+    expect(await ask('call app_quit {"apps":["Slack","Terminal"]}')).toContain(
+      'rule computer.deny.app',
+    );
+    expect(await ask('call window_manage {"app":"1Password","action":"hide"}')).toContain(
+      'rule computer.deny.app',
+    );
+    expect(sent('apps.quit')).toHaveLength(0);
+    expect(sent('window.manage')).toHaveLength(0);
+  });
+
+  it('arranges windows without asking; closing a window asks', async () => {
+    expect(await ask('call window_manage {"app":"Safari","action":"left","display":2}')).toContain(
+      'OK Done: snap safari to the left half.',
+    );
+    expect(sent('window.manage')[0]).toMatchObject({ app: 'Safari', action: 'left', display: 2 });
+
+    const c = await h.rpc();
+    const pending = c.call({
+      cmd: 'ask',
+      text: 'call window_manage {"app":"Safari","action":"close"}',
+    });
+    const req = await waitFor(() => h.rt.approvals.pending()[0]);
+    expect(req).toMatchObject({
+      rule: 'computer.window.close',
+      summary: 'Close the front window of Safari',
+    });
+    await (await h.rpc()).call({ cmd: 'deny', approvalId: req.id });
+    await pending;
+    expect(sent('window.manage')).toHaveLength(1);
+    c.close();
+  });
+
+  it('looks at a whole display: image to the model, only its hash to the audit', async () => {
+    const out = await ask('call screen_look {"display":1}');
+    expect(out).toContain('Display 1 of 2 — image 1512×982 px');
+    expect(out).toContain('- Safari — "GitHub" @ (0, 30) 1200×900');
+    expect(out).toContain('[images:1]');
+    expect(sent('screen.look')[0]).toEqual({ kind: 'screen.look', display: 1 });
+    expect(JSON.stringify(h.rt.audit.query({ limit: 20 }))).not.toContain('BBBBBBBB');
+    expect(await ask('call screen_look {"app":"Safari","display":1}')).toContain(
+      'rule input.invalid',
+    );
   });
 });
 

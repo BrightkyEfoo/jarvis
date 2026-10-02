@@ -2,6 +2,23 @@ import { randomUUID } from 'node:crypto';
 
 export type BrowserApp = 'Arc' | 'Google Chrome';
 
+export const WINDOW_ACTIONS = [
+  'front',
+  'hide',
+  'show',
+  'minimize',
+  'restore',
+  'fullscreen',
+  'maximize',
+  'left',
+  'right',
+  'top',
+  'bottom',
+  'center',
+  'close',
+] as const;
+export type WindowAction = (typeof WINDOW_ACTIONS)[number];
+
 /**
  * What Jarvis.app can be asked to do. The app holds the macOS permissions (Automation,
  * Accessibility, Screen Recording) and runs a fixed catalogue of actions: it never receives
@@ -34,7 +51,10 @@ export type ActuatorAction =
   | { kind: 'reminders.list'; list?: string; includeCompleted: boolean }
   | { kind: 'reminders.add'; title: string; list?: string; due?: string; notes?: string }
   | { kind: 'reminders.complete'; id: string }
-  | { kind: 'screen.look'; app?: string }
+  | { kind: 'screen.look'; app?: string; display?: number }
+  | { kind: 'apps.windows' }
+  | { kind: 'apps.quit'; apps: string[] }
+  | { kind: 'window.manage'; app: string; action: WindowAction; display?: number }
   | { kind: 'screen.probe'; app: string; element?: number; x?: number; y?: number }
   | {
       kind: 'screen.act';

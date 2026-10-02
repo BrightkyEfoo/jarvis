@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.14.0 — Le bureau (02/10/2026)
+
+### Ajouté
+- **Voir l'écran** :
+  - `screen_look {display}` capture un écran entier (1 = celui de la barre de menus), avec la
+    position de chaque fenêtre ;
+  - Terminal, Réglages, les gestionnaires de mots de passe et Jarvis sont exclus de l'image.
+- **`windows_list`** : ce qui est ouvert et sur quel écran, y compris les apps masquées ou
+  réduites.
+- **Fermer des apps** : `app_quit`, comme ⌘Q, sans jamais forcer. Une seule validation pour toute
+  la liste (« ferme les apps du premier écran »). Une app qui demande d'enregistrer reste ouverte,
+  et Jarvis le dit.
+- **Ranger les fenêtres** : `window_manage` met une fenêtre au premier plan, la masque, la réduit,
+  la passe en plein écran ou l'agrandit. Il la range aussi sur une moitié de l'écran ou au centre,
+  et peut la déplacer sur un autre écran. Fermer une fenêtre demande une validation.
+- Jarvis.app 0.8.0 : nouvelle capacité `windows`. Les nouvelles actions sont traduites en français
+  pour la voix et le tableau de bord.
+
 ## 0.13.0 — Tout connecter, appel plus naturel (02/10/2026)
 
 ### Corrigé

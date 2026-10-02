@@ -770,3 +770,32 @@ pile au moment où elles finissaient de charger. Elle se fait désormais au prem
 - **Après chaque réponse** : 10 s pendant lesquelles une relance n'a pas besoin du nom.
 - **Écho** : un énoncé dont au moins 60 % des mots viennent de ce que Jarvis vient de dire est
   ignoré. C'est sa propre voix renvoyée par la pièce, pas une demande.
+
+## ADR-030 — Le bureau : fenêtres, écrans, fermer des apps (02/10/2026)
+
+**Demande de Brightky** : « Jarvis doit pouvoir fermer des apps, voir mon écran, faire des
+manipulations de mon écran, manipuler mon PC. » Jusqu'ici, Jarvis voyait la fenêtre d'une app et
+y cliquait ou tapait, mais il ne pouvait ni fermer une app, ni voir un écran entier, ni ranger les
+fenêtres.
+
+**Décision** : trois outils de plus, servis par Jarvis.app (Accessibilité, Enregistrement de
+l'écran), sans AppleScript.
+- **`windows_list`** (N0) : les écrans (1 = celui de la barre de menus, puis de gauche à droite),
+  chaque fenêtre visible avec son app, son titre et son écran, et les apps ouvertes sans fenêtre
+  visible. Les titres viennent du contenu d'autres personnes : la session est teintée.
+- **`screen_look {display}`** (N0) : un écran entier. Les apps protégées sont **exclues de la
+  capture** par ScreenCaptureKit : elles n'apparaissent pas, on voit ce qu'il y a derrière.
+  Pour agir dans une app, Jarvis la regarde d'abord elle-même (`screen_look {app}`) : les clics
+  gardent les mêmes contrôles (libellé réel sous le pointeur, `commit`).
+- **`app_quit`** (N2, une validation pour toute la liste) : comme ⌘Q, **jamais de fermeture
+  forcée**. Une app qui a du travail non enregistré demande d'enregistrer et reste ouverte : c'est
+  Brightky qui répond. Les apps protégées et le Finder ne sont jamais quittés.
+- **`window_manage`** : premier plan, masquer / afficher, réduire / restaurer, plein écran,
+  agrandir, moitiés gauche / droite / haut / bas, centrer, éventuellement sur un autre écran : N1
+  (rien ne se perd). Fermer une fenêtre : N2.
+
+**Défense en profondeur** : l'app refuse d'elle-même de quitter, ranger ou capturer une app
+protégée (identifiant de bundle), même sur ordre du daemon.
+
+**Écarté** : la fermeture forcée (perte de travail), et les clics à l'échelle de l'écran entier.
+Le contrôle « ce qui est réellement sous le pointeur » reste fait app par app.

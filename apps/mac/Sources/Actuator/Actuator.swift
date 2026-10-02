@@ -3,8 +3,8 @@ import AppKit
 /// Jarvis.app's hands. Connects to jarvisd, registers as the actuator, and runs the actions the
 /// daemon has already cleared with its policy (and, for N2, with Brightky). One action at a time.
 final class Actuator {
-    static let version = "0.7.0"
-    static let capabilities = ["browser", "notes", "reminders", "screen"]
+    static let version = "0.8.0"
+    static let capabilities = ["browser", "notes", "reminders", "screen", "windows"]
 
     private let path: String
     private let work = DispatchQueue(label: "cm.brightkyefoo.jarvis.actuator")
@@ -142,7 +142,15 @@ final class Actuator {
             args["kind"] = nil
             return try AppScripts.perform(kind: kind, args, cancel: token)
         case "screen.look":
+            if let display = a["display"] as? Int { return try screen.lookDisplay(display, cancel: token) }
             return try screen.look(app: a["app"] as? String, cancel: token)
+        case "apps.windows":
+            return screen.windows()
+        case "apps.quit":
+            guard let apps = a["apps"] as? [String], !apps.isEmpty else { throw ActGuard.Refused(message: "aucune app à quitter") }
+            return try screen.quit(apps, cancel: token)
+        case "window.manage":
+            return try screen.manage(a, cancel: token)
         case "screen.probe":
             guard let app = a["app"] as? String else { throw ActGuard.Refused(message: "app manquante") }
             return try screen.probe(app: app, element: a["element"] as? Int, x: a["x"] as? Int, y: a["y"] as? Int)

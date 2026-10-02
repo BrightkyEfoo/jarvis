@@ -74,6 +74,11 @@ enum VoiceTests {
         check(Confirmation.spoken("Run: uname -s", lang: "en") == "Run: uname -s", "English summary unchanged")
         check(Wording.fr("Draft (perso) to paul@client.cm — \"Devis\"") == "Brouillon (perso) pour paul@client.cm — « Devis »", "draft summary in French")
         check(Wording.fr("Open Visual Studio Code on ~/w/CodeVault") == "Ouvrir Visual Studio Code sur ~/w/CodeVault", "open on")
+        check(Wording.fr("Quit Safari, Slack, Mail") == "Quitter Safari, Slack, Mail", "quit apps")
+        check(Wording.fr("Snap Safari to the left half on display 2") == "Mettre Safari sur la moitié gauche sur l'écran 2", "snap",
+              Wording.fr("Snap Safari to the left half on display 2"))
+        check(Wording.fr("Close the front window of Slack") == "Fermer la fenêtre de Slack", "close window")
+        check(Wording.fr("Look at display 1") == "Regarder l'écran 1", "look display")
         check(Wording.fr("Read mail perso#m1") == "Lire le mail perso#m1", "read mail before read")
         check(Wording.fr("Triage mail all accounts (24 h)") == "Tri des mails : tous les comptes (24 h)", "triage", Wording.fr("Triage mail all accounts (24 h)"))
 

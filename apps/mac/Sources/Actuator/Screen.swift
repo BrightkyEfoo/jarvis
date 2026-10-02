@@ -22,7 +22,7 @@ final class ScreenActor {
 
     // MARK: permissions
 
-    private func requireAccessibility() throws {
+    func requireAccessibility() throws {
         if AXIsProcessTrusted() { return }
         if !promptedAX {
             promptedAX = true
@@ -32,7 +32,7 @@ final class ScreenActor {
         throw ActGuard.Refused(message: "Autorise Jarvis dans Réglages Système › Confidentialité et sécurité › Accessibilité")
     }
 
-    private func requireCapture() throws {
+    func requireCapture() throws {
         if CGPreflightScreenCaptureAccess() { return }
         if !promptedCapture {
             promptedCapture = true
@@ -43,16 +43,21 @@ final class ScreenActor {
 
     // MARK: apps and windows
 
+    /// A running app with a Dock icon, by name, bundle name or bundle identifier.
+    static func running(_ name: String) -> NSRunningApplication? {
+        let n = name.lowercased().replacingOccurrences(of: ".app", with: "").trimmingCharacters(in: .whitespaces)
+        return NSWorkspace.shared.runningApplications.first { a in
+            a.activationPolicy == .regular && (
+                a.localizedName?.lowercased() == n ||
+                a.bundleURL?.deletingPathExtension().lastPathComponent.lowercased() == n ||
+                a.bundleIdentifier?.lowercased() == n)
+        }
+    }
+
     func resolve(_ name: String?) throws -> NSRunningApplication {
         let app: NSRunningApplication?
         if let name {
-            let n = name.lowercased().replacingOccurrences(of: ".app", with: "").trimmingCharacters(in: .whitespaces)
-            app = NSWorkspace.shared.runningApplications.first { a in
-                a.activationPolicy == .regular && (
-                    a.localizedName?.lowercased() == n ||
-                    a.bundleURL?.deletingPathExtension().lastPathComponent.lowercased() == n ||
-                    a.bundleIdentifier?.lowercased() == n)
-            }
+            app = Self.running(name)
             if app == nil { throw ActGuard.Refused(message: "\(name) n'est pas ouvert (ouvre-le d'abord avec app_open)") }
         } else {
             app = NSWorkspace.shared.frontmostApplication
@@ -73,7 +78,7 @@ final class ScreenActor {
         return nil
     }
 
-    private func activate(_ app: NSRunningApplication) throws {
+    func activate(_ app: NSRunningApplication) throws {
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier { return }
         app.activate()
         for _ in 0..<30 {
@@ -161,7 +166,7 @@ final class ScreenActor {
         "AXTextArea", "AXLink", "AXMenuItem", "AXMenuBarItem", "AXSlider", "AXDisclosureTriangle", "AXIncrementor", "AXCell", "AXRow", "AXTab",
     ]
 
-    private func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+    func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
     }
@@ -170,7 +175,7 @@ final class ScreenActor {
         (attr(el, name) as? String).map { $0.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    private func frame(_ el: AXUIElement) -> CGRect? {
+    func frame(_ el: AXUIElement) -> CGRect? {
         guard let pv = attr(el, kAXPositionAttribute), let sv = attr(el, kAXSizeAttribute),
               CFGetTypeID(pv) == AXValueGetTypeID(), CFGetTypeID(sv) == AXValueGetTypeID() else { return nil }
         var p = CGPoint.zero, s = CGSize.zero
@@ -338,7 +343,7 @@ final class ScreenActor {
         lastProbe = nil
     }
 
-    private func blocking<T>(_ work: @escaping () async throws -> T) throws -> T {
+    func blocking<T>(_ work: @escaping () async throws -> T) throws -> T {
         let sem = DispatchSemaphore(value: 0)
         var result: Result<T, Error> = .failure(ActGuard.Refused(message: "capture interrompue"))
         Task.detached {
