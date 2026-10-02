@@ -2,7 +2,7 @@ import AVFoundation
 
 /// Speaks sentence by sentence with the system voices already on the Mac.
 /// Main-thread only (AppKit run loop): hence the unchecked Sendable.
-final class Speaker: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
+final class Speaker: NSObject, AVSpeechSynthesizerDelegate, SpeechOutput, @unchecked Sendable {
     private let synth = AVSpeechSynthesizer()
     private let voices: [String: AVSpeechSynthesisVoice]
     private let rate: Float

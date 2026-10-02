@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0 — Voix neuronales locales (02/10/2026)
+
+### Ajouté
+- **Reconnaissance Parakeet v3** (CoreML, locale) : français et anglais en un seul passage,
+  94 à 133 ms par phrase.
+- **Voix PocketTTS** en streaming (ADR-025) :
+  - 4 voix françaises masculines (Fabien, Théo, Samuel, Erick) issues de dons de voix (CC0) ;
+  - 7 voix anglaises masculines (Charles, Javert, Michael, Peter, Jean, Paul, George) ;
+  - Estelle et Alba au féminin.
+- **Bascule automatique** des voix Apple vers les voix neuronales dès qu'elles sont chargées ;
+  préchauffage, lecture continue avec 240 ms de tampon, regroupement des phrases.
+- **Tableau de bord** : choix des voix FR et EN, écoute des échantillons, moteur en cours.
+- **CLI** : `jarvis voice samples`, qui génère un échantillon de chaque voix dans `~/Jarvis/voix`
+  avec latence, vitesse et taux d'erreur.
+- **Jarvis.app** : `--voice-lab`, `--voice-session`, `--voice-screen`, `--neural-selftest`.
+  L'option `JARVIS_MUTE=1` sert aux tests silencieux.
+- « Brightky » est réécrit phonétiquement pour la synthèse ; les symboles (%, €, FCFA) sont
+  prononcés.
+- **Tests** : 5 tests Swift (texte parlé, taux d'erreur).
+
+### Modifié
+- Jarvis.app devient un paquet Swift (FluidAudio 0.17.5 épinglé). `build.sh` copie les
+  ressources et les extraits de voix dans l'app.
+
 ## 0.7.0 — Pilotage du Mac (01/10/2026)
 
 ### Ajouté

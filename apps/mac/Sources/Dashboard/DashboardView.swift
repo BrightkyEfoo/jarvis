@@ -1,3 +1,4 @@
+import AVFoundation
 import Charts
 import SwiftUI
 
@@ -553,11 +554,7 @@ struct SettingsView: View {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
             }
-            Section("Voix") {
-                LabeledContent("Raccourci", value: VoiceConfig.load().hotkeyLabel)
-                LabeledContent("Voix", value: "\(VoiceConfig.load().frVoice) (FR) · \(VoiceConfig.load().enVoice) (EN)")
-                Text("Réglables dans ~/Library/Application Support/Jarvis/voice.json").font(.caption).foregroundStyle(.secondary)
-            }
+            VoicePicker()
             Section("Sécurité") {
                 Text("Les règles (N0–N4) se changent uniquement dans policy.yaml, scellée par toi. Le tableau de bord ne peut rien débloquer : il passe par les mêmes contrôles que la CLI.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -565,5 +562,73 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Réglages")
+    }
+}
+
+/// Choose Jarvis's French and English voices; listen to the samples made by `jarvis voice samples`.
+struct VoicePicker: View {
+    @EnvironmentObject var store: Store
+    @State private var config = VoiceConfig.load()
+    @State private var player: AVAudioPlayer?
+    @State private var saved = false
+
+    private var samplesDir: URL { URL(fileURLWithPath: NSHomeDirectory() + "/Jarvis/voix") }
+
+    var body: some View {
+        Section("Voix") {
+            LabeledContent("Moteur", value: store.voiceEngine.isEmpty ? "—" : store.voiceEngine)
+            LabeledContent("Raccourci", value: config.hotkeyLabel)
+            Picker("Moteur souhaité", selection: $config.engine) {
+                Text("Neuronal (Parakeet + PocketTTS, local)").tag("neural")
+                Text("Système (Apple)").tag("system")
+            }
+            row("Voix française", lang: "fr", selection: $config.frNeural)
+            row("Voix anglaise", lang: "en", selection: $config.enNeural)
+            HStack {
+                Text(saved ? "Enregistré : Jarvis.app redémarre la voix." : "Échantillons : jarvis voice samples")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Appliquer") { apply() }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    private func row(_ title: String, lang: String, selection: Binding<String>) -> some View {
+        HStack {
+            Picker(title, selection: selection) {
+                ForEach(VoiceCatalog.all.filter { $0.lang == lang }, id: \.id) { v in
+                    Text(v.label).tag(v.id)
+                }
+            }
+            Button {
+                listen("\(lang)-\(selection.wrappedValue).wav")
+            } label: { Image(systemName: "play.circle") }
+                .buttonStyle(.borderless)
+                .help("Écouter l'échantillon")
+        }
+    }
+
+    private func listen(_ file: String) {
+        let url = samplesDir.appendingPathComponent(file)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            store.lastError = "Pas encore d'échantillon : lance jarvis voice samples"
+            return
+        }
+        player = try? AVAudioPlayer(contentsOf: url)
+        player?.play()
+    }
+
+    private func apply() {
+        config.save()
+        saved = true
+        // The voice loop reads its settings at start: relaunch the app (launchd restarts it anyway).
+        let app = Bundle.main.bundleURL
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            p.arguments = ["-n", app.path]
+            try? p.run()
+            NSApp.terminate(nil)
+        }
     }
 }

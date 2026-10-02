@@ -84,6 +84,14 @@ enum VoiceTests {
         check(Wording.fr("Press cmd+q in Word") == "Appuyer sur cmd+q dans Word", "key")
         check(Wording.fr("Open https://x.cm in Arc") == "Ouvrir https://x.cm dans Arc", "browser open")
 
+        // Neural voices: text prepared for reading, intelligibility metric.
+        check(SpokenText.prepare("**Brightky**, 15 % de `remise`", lang: "fr") == "Braïtki, 15 pour cent de remise", "spoken fr",
+              SpokenText.prepare("**Brightky**, 15 % de `remise`", lang: "fr"))
+        check(SpokenText.prepare("Hi Brightky & team", lang: "en") == "Hi Bright-key and team", "spoken en")
+        check(WordErrorRate.of(reference: "Tu as trois mails urgents.", hypothesis: "tu as trois mails urgents") == 0, "wer ignores case/punctuation")
+        check(abs(WordErrorRate.of(reference: "un deux trois quatre", hypothesis: "un deux quatre") - 0.25) < 1e-9, "wer deletion")
+        check(WordErrorRate.of(reference: "l’équipe produit", hypothesis: "l'équipe produit") == 0, "wer apostrophes")
+
         // Computer control guard, independent of the daemon.
         for url in ["https://www.paypal.com/x", "https://ebanking.ecobank.com", "https://www.afrilandfirstbank.com", "https://github.com/settings/tokens",
                     "https://accounts.google.com/"] {

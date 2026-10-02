@@ -3,7 +3,8 @@ import Speech
 
 /// Microphone → two on-device recognizers (fr-FR and en-US) fed with the same audio.
 /// `requiresOnDeviceRecognition`: no audio leaves the Mac, no mobile data is used.
-final class Listener {
+final class Listener: SpeechInput {
+    let engineName = "Apple (fr-FR + en-US)"
     final class Session {
         let lang: String
         let recognizer: SFSpeechRecognizer

@@ -26,6 +26,8 @@ final class Store: ObservableObject {
     /// App Jarvis is driving right now (browser, Notes, any app), nil when its hands are idle.
     @Published var acting: String?
     @Published var actuatorConnected = false
+    /// Recogniser and voices in use (system until the neural models are loaded).
+    @Published var voiceEngine = ""
     @Published var lastError: String?
     @Published var signature = "fait avec ❤️ par Brightky Efo'o"
     @Published var auditExhausted = false

@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Builds Jarvis.app (menu bar + dashboard + push-to-talk voice): native Swift, 0 MB download.
+# Builds Jarvis.app (menu bar + dashboard + voice + computer control): native Swift package.
+# Neural voice models (~1.5 GB) are downloaded by the app on first use, not here.
 set -euo pipefail
 cd "$(dirname "$0")"
 APP="build/Jarvis.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp Info.plist "$APP/Contents/Info.plist"
-SOURCES=()
-while IFS= read -r f; do SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
-swiftc -O -wmo -swift-version 5 -parse-as-library -target arm64-apple-macos15.0 \
-  "${SOURCES[@]}" -o "$APP/Contents/MacOS/jarvis-app"
+mkdir -p "$APP/Contents/Resources"
+# Swift package (FluidAudio for the neural voice stack, pinned in Package.resolved).
+swift build -c release --product jarvis-app
+BIN="$(swift build -c release --show-bin-path)"
+cp "$BIN/jarvis-app" "$APP/Contents/MacOS/jarvis-app"
+for bundle in "$BIN"/*.bundle; do [ -d "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"; done
+# Reference clips of the cloned French voices (CC BY 4.0, see Resources/voices/CREDITS.md).
+[ -d Resources/voices ] && cp -R Resources/voices "$APP/Contents/Resources/voices"
 
 # Stable local identity (ops: apps/mac/signing-setup.sh) keeps the Microphone/Speech permissions
 # across rebuilds; without it, an ad-hoc signature makes macOS ask again after each build.

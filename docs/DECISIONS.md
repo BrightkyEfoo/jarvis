@@ -570,3 +570,55 @@ refuse d'elle-même :
 **Risque assumé** : sur un domaine en liste blanche, une page piégée pourrait pousser Jarvis à
 cliquer « Commenter » sans confirmation. Les destructions et les paiements restent bloqués ou
 confirmés. La liste blanche est vide par défaut ; Brightky la remplit en connaissance de cause.
+
+## ADR-025 — Voix neuronales locales : Parakeet + PocketTTS sur CoreML (02/10/2026)
+
+**Contexte.** L'ADR-018 avait choisi les voix et la reconnaissance d'Apple faute de data. Le
+02/10, Brightky donne son feu vert au téléchargement (environ 2,5 Go annoncés) et demande
+« de meilleures voix, majoritairement des hommes, en français et en anglais ».
+
+**Décision.** La pile **FluidAudio 0.17.5** (Swift, CoreML, Apache 2.0, version épinglée),
+intégrée dans Jarvis.app, qui devient un paquet Swift.
+- **Reconnaissance** : **Parakeet TDT 0.6B v3**. Un seul passage reconnaît le français ou
+  l'anglais, 100 % local. Mesuré : **94 à 133 ms** pour une phrase, contre 242 à 872 ms avec les
+  deux reconnaisseurs Apple.
+- **Synthèse** : **PocketTTS** (Kyutai, 100 M paramètres) en streaming, par trames de 80 ms.
+  - **Anglais** (pack 6 couches) : 8 voix intégrées, dont 7 masculines. 2,8× plus rapide que le
+    temps réel, **100 à 200 ms** au premier son à chaud, 0 % d'erreur de compréhension mesurée
+    par Parakeet.
+  - **Français** (pack 24 couches) : 4 voix masculines clonées, plus Estelle. **1,2× le temps
+    réel** sur le M1 Pro (int8, GPU) et **0,6 à 1 s** au premier son. Le préremplissage du pack
+    24 couches coûte environ 0,6 s par bloc : le lecteur regroupe donc les phrases en attente
+    en un seul appel, avec des blocs de 100 jetons.
+- **Bascule** : les voix Apple restent le secours. La pile neuronale se charge en arrière-plan
+  et prend la main au premier moment calme. Sa compilation CoreML prend quelques minutes, une
+  seule fois par machine.
+- **Choix des voix** : dans le tableau de bord (Réglages › Voix), avec écoute des échantillons
+  produits par `jarvis voice samples`.
+
+**Consentement des voix clonées (non négociable).**
+- Les conditions de PocketTTS interdisent de cloner une voix sans consentement explicite.
+- Les extraits CML-TTS (lecteurs LibriVox, CC BY) ont été **écartés** : ces personnes n'ont pas
+  consenti au clonage.
+- Les 4 voix françaises viennent du **Kyutai Voice Donation Project** (voix données pour le
+  clonage, CC0) et d'un enregistrement de l'équipe Kyutai.
+- Origine et licences dans `apps/mac/Resources/voices/CREDITS.md`.
+
+**Mesures qui ont tranché** (M1 Pro, sur batterie) :
+
+| Option | Résultat | Verdict |
+|---|---|---|
+| Supertonic-3 (5 voix M, 31 langues) | 0,6–0,7× le temps réel | écarté (coupures) |
+| PocketTTS FR, phrase par phrase | 0,6–0,8×, 1,4 s de préremplissage par phrase | remplacé par les blocs |
+| PocketTTS FR, blocs de 100 jetons, GPU | 1,2×, premier son 0,6–1 s | **retenu** |
+| Kokoro FR | une seule voix, féminine | écarté |
+
+**Téléchargement réel** (connexion mesurée entre 0,15 et 1,5 Mo/s) : seul le nécessaire.
+- Pack français : modèles int8, voix Estelle et encodeur de clonage, soit environ 1 Go au lieu
+  de 1,6 Go.
+- Pack anglais : 530 Mo.
+- Parakeet : 470 Mo.
+- Les variantes inutilisées ne sont pas téléchargées.
+
+**Écartés** : Voxtral TTS (4 B, licence non commerciale), Chatterbox (environ 1× sur M5 Pro, pas
+de streaming), Qwen3-TTS et Kyutai TTS 1,6 B (trop lourds pour le M1 Pro avec les workers).

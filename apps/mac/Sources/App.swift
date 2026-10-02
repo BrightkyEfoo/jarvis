@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+@preconcurrency import FluidAudio
 import Speech
 import SwiftUI
 
@@ -39,8 +40,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setvbuf(stdout, nil, _IOLBF, 0)
         NSApp.setActivationPolicy(.accessory)
         let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--neural-selftest") {
+            SelfTest.neural(config: config, files: Array(args[(i + 1)...]))
+            return
+        }
         if let i = args.firstIndex(of: "--selftest") {
             SelfTest.run(config: config, files: Array(args[(i + 1)...]))
+            return
+        }
+        if let i = args.firstIndex(of: "--voice-session"), i + 1 < args.count {
+            VoiceLab.session(args[i + 1])
+            return
+        }
+        if let i = args.firstIndex(of: "--voice-screen") {
+            VoiceLab.screen(Array(args[(i + 1)...]))
+            return
+        }
+        if let i = args.firstIndex(of: "--voice-lab"), i + 1 < args.count {
+            VoiceLab.run(directory: args[i + 1], references: Array(args[(i + 2)...]))
             return
         }
         if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
@@ -52,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !args.contains("--no-voice") {
             let c = Controller(config: config)
             c.onState = { [weak self] s in self?.store.voice = Store.VoiceState(rawValue: s) ?? .idle }
+            c.onEngine = { [weak self] e in self?.store.voiceEngine = e }
             c.start()
             controller = c
         }
@@ -153,6 +171,53 @@ enum SelfTest {
             print("✔ \(url.lastPathComponent): [\(pick?.lang ?? "-")] « \(pick?.text ?? "") » en \(elapsed) ms (2 reconnaissances en parallèle)")
             recognize(files, index: index + 1, then: then)
         }
+    }
+
+    /// `jarvis voice selftest` with the neural stack: Parakeet on the given clips, then one French
+    /// and one English reply through the streaming speaker, with timings.
+    static var neuralSpeaker: NeuralSpeaker?
+
+    static func neural(config: VoiceConfig, files: [String]) {
+        Task.detached {
+            do {
+                let t0 = Date()
+                let stack = try await NeuralStack.load(fr: config.frNeural, en: config.enNeural) { print("  \($0)") }
+                print("✔ modèles neuronaux chargés en \(ms(since: t0)) ms")
+                for f in files {
+                    let t = Date()
+                    var state = TdtDecoderState.make(decoderLayers: await stack.asr.decoderLayerCount)
+                    let r = try await stack.asr.transcribe(URL(fileURLWithPath: f), decoderState: &state)
+                    let lang = LanguagePick.replyLanguage(r.text, hint: "fr")
+                    print("✔ \((f as NSString).lastPathComponent) : [\(lang)] « \(r.text) » en \(ms(since: t)) ms")
+                }
+                await MainActor.run { speakNeural(stack, config: config) }
+            } catch {
+                print("✖ \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+    }
+
+    @MainActor static func speakNeural(_ stack: NeuralStack, config: VoiceConfig) {
+        let s = NeuralSpeaker(stack: stack, fallback: Speaker(config: config), rate: config.rate)
+        neuralSpeaker = s
+        var t0 = Date()
+        var lines = [("Bonjour Brightky. Tu as deux réunions cet après-midi, et Paul attend ta réponse sur le devis.", "fr"),
+                     ("Hello Brightky. Your build passed, and the pull request is ready for review.", "en"),
+                     ("Two meetings left today.", "en"),
+                     ("C'est noté, je m'en occupe.", "fr")]
+        func next() {
+            guard !lines.isEmpty else { exit(0) }
+            let (text, lang) = lines.removeFirst()
+            t0 = Date()
+            var first = true
+            s.onFirstAudio = {
+                if first { print("✔ voix \(lang) (\(stack.voices[lang]?.spec.label ?? "?")) : premier son à \(ms(since: t0)) ms"); first = false }
+            }
+            s.onIdle = { print("  fin à \(ms(since: t0)) ms"); next() }
+            s.speak(text, lang: lang)
+        }
+        next()
     }
 
     static func speak(_ config: VoiceConfig) {

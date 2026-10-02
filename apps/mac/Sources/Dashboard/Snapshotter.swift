@@ -117,6 +117,8 @@ enum DemoData {
         s.connected = true
         s.voice = .idle
         s.activity = "Répondu sonnet-5-5 · 1er mot 780 ms"
+        s.voiceEngine = "Parakeet v3 (local) · fr: Fabien — posé, en: Charles — deep"
+        s.actuatorConnected = true
         return s
     }
 }

@@ -6,7 +6,7 @@ code lui impose.
 
 **État : Sprint 4 + pilotage du Mac.** En place : le moteur de permissions, l'audit, le kill switch,
 les secrets, les outils macOS, la mémoire, le routeur Sonnet/Opus et le compteur de coûts. Jarvis
-répond à la voix (push-to-talk, 100 % local) en français et en anglais, lit Gmail, IMAP et
+répond à la voix (push-to-talk, 100 % local, voix neuronales) en français et en anglais, lit Gmail, IMAP et
 l'agenda via un lecteur en quarantaine, fait le briefing du matin, rédige des brouillons et ne les
 envoie qu'après ton « oui ». Il fait aussi des recherches web sourcées et résume des vidéos YouTube
 à partir de leurs sous-titres. Un tableau de bord natif (barre de menus) montre tout ce qu'il fait
@@ -62,6 +62,14 @@ demande les autorisations pour **Jarvis** (jamais pour Node ou le Terminal) :
 - **Chrome uniquement** : menu Affichage › Options pour les développeurs › « Autoriser JavaScript
   depuis les événements Apple ».
 
+### Voix neuronales (une fois, environ 2 Go)
+
+Au premier lancement, Jarvis.app télécharge Parakeet (reconnaissance) et PocketTTS (voix
+françaises et anglaises), puis les compile pour la puce. Cela prend quelques minutes, une seule
+fois. En attendant, les voix Apple répondent. Tout tourne sur le Mac : aucun son ne part en
+ligne. Les voix françaises clonées viennent de dons de voix (voir
+`apps/mac/Resources/voices/CREDITS.md`).
+
 Arrêt d'urgence à tout moment : **⌃⎋** (Ctrl + Échap). Les sites bancaires, de paiement et de
 mots de passe, les champs de mot de passe et le Terminal ne sont jamais pilotés.
 
@@ -87,6 +95,7 @@ jarvis memory                  # ce que Jarvis retient · `jarvis memory notes` 
 jarvis dashboard               # tableau de bord : activité, validations, coûts, prévisions
 jarvis voice                   # maintiens ⌥Espace et parle ; réappuie pour couper la parole
 jarvis voice selftest          # vérifie la reconnaissance FR/EN et la voix, sans micro
+jarvis voice samples           # écoute les voix neuronales (FR/EN) et choisis dans le tableau de bord
 jarvis stop                    # STOP : tout s'arrête
 jarvis resume                  # reprendre (PIN)
 jarvis approvals --watch       # valider depuis un autre terminal

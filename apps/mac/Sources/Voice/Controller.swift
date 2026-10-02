@@ -11,8 +11,11 @@ final class Controller {
     var onState: (String) -> Void = { _ in }
 
     private let config: VoiceConfig
-    private let listener = Listener()
-    private let speaker: Speaker
+    private var listener: SpeechInput = Listener()
+    private var speaker: SpeechOutput
+    /// Neural stack waiting for an idle moment to replace the system voices.
+    private var pendingNeural: NeuralStack?
+    var onEngine: (String) -> Void = { _ in }
     private let client: JarvisClient
     private var hotKey: HotKey?
     private var state = State.idle {
@@ -53,21 +56,58 @@ final class Controller {
             hotKey.onRelease = { [weak self] in self?.release() }
             self.hotKey = hotKey
             self.client.onMessage = { [weak self] in self?.handle($0) }
-            self.speaker.onFirstAudio = { [weak self] in
-                if self?.tFirstAudio == nil { self?.tFirstAudio = Date() }
-            }
-            self.speaker.onIdle = { [weak self] in
-                guard let self, self.state == .speaking else { return }
-                if self.pendingApproval != nil { self.state = .confirming } else if self.currentAsk == nil { self.state = .idle }
-            }
-            self.listener.onPartial = { partial in
-                print("\r\u{1B}[2K🎙 \(partial)", terminator: "")
-                fflush(stdout)
-            }
+            self.wire()
             Listener.warmUp { ms in print("reconnaissance locale préchauffée en \(ms) ms") }
             print("Jarvis Voice prêt — maintiens \(self.config.hotkeyLabel) pour parler (voix \(self.speaker.voiceNames)).")
-            print("Reconnaissance 100 % locale (fr-FR, en-US) : aucun son ne quitte le Mac.")
+            print("Reconnaissance 100 % locale : aucun son ne quitte le Mac.")
+            if self.config.engine == "neural" { self.loadNeural() }
         }
+    }
+
+    private func wire() {
+        speaker.onFirstAudio = { [weak self] in
+            if self?.tFirstAudio == nil { self?.tFirstAudio = Date() }
+        }
+        speaker.onIdle = { [weak self] in
+            guard let self else { return }
+            if self.state == .speaking {
+                if self.pendingApproval != nil { self.state = .confirming } else if self.currentAsk == nil { self.state = .idle }
+            }
+            self.adoptNeuralIfIdle()
+        }
+        listener.onPartial = { partial in
+            print("\r\u{1B}[2K🎙 \(partial)", terminator: "")
+            fflush(stdout)
+        }
+        onEngine("\(listener.engineName) · \(speaker.voiceNames)")
+    }
+
+    /// Parakeet + PocketTTS load in the background (CoreML compiles them once per machine, which
+    /// can take minutes); the system voices keep working meanwhile.
+    private func loadNeural() {
+        let fr = config.frNeural, en = config.enNeural
+        Task.detached {
+            do {
+                let stack = try await NeuralStack.load(fr: fr, en: en) { line in print("🧠 \(line)") }
+                await MainActor.run {
+                    self.pendingNeural = stack
+                    self.adoptNeuralIfIdle()
+                }
+            } catch {
+                print("⚠ voix neuronales indisponibles (\(error.localizedDescription)) : voix système conservées")
+            }
+        }
+    }
+
+    private func adoptNeuralIfIdle() {
+        guard let stack = pendingNeural, state == .idle, !speaker.busy else { return }
+        pendingNeural = nil
+        let system = speaker
+        speaker = NeuralSpeaker(stack: stack, fallback: system, rate: config.rate)
+        listener.cancel()
+        listener = NeuralListener(asr: stack.asr)
+        wire()
+        print("🧠 voix neuronales actives : \(speaker.voiceNames)")
     }
 
     private func press() {
@@ -168,7 +208,10 @@ final class Controller {
             }
             currentAsk = nil
             logLatency(data)
-            if !speaker.busy { state = .idle }
+            if !speaker.busy {
+                state = .idle
+                adoptNeuralIfIdle()
+            }
         case "error":
             currentAsk = nil
             say(spokenError(msg["error"] as? String ?? "error"))

@@ -239,6 +239,18 @@ async function voiceCommand(args: string[]): Promise<void> {
   if (process.env.JARVIS_HOME) openArgs.push('--env', `JARVIS_HOME=${process.env.JARVIS_HOME}`);
   openArgs.push(app);
 
+  if (sub === 'samples') {
+    // One WAV per neural voice (mostly male, FR and EN), measured by Parakeet, then the folder opens.
+    const samples = join(homedir(), 'Jarvis', 'voix');
+    openArgs.push('--args', '--voice-lab', samples);
+    const child = spawn('/usr/bin/open', openArgs, { stdio: 'inherit' });
+    await new Promise((r) => child.on('exit', r));
+    spawn('/usr/bin/open', [samples], { stdio: 'ignore' });
+    console.log(
+      `Échantillons dans ${samples} — choisis dans le tableau de bord (Réglages › Voix).`,
+    );
+    return;
+  }
   if (sub === 'selftest') {
     // Two spoken samples made with the system voices: tests recognition without the microphone.
     const fr = join(tmpdir(), 'jarvis-selftest-fr.aiff');
@@ -453,7 +465,8 @@ const HELP = `jarvis — assistant de Brightky
   jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
   jarvis service install [--dev] [--app] | uninstall | status | logs   démarrage auto (launchd)
   jarvis dashboard             tableau de bord (activité, validations, coûts, prévisions…)
-  jarvis voice [build|test|selftest]  voix push-to-talk (maintiens ⌥Espace), 100 % locale
+  jarvis voice [build|test|selftest|samples]  voix push-to-talk (⌥Espace), 100 % locale ;
+                               samples : écouter les voix neuronales
   jarvis audit tail [n]        dernières entrées du journal
   jarvis audit verify          vérifier la chaîne de hash du journal
   jarvis daemon [--dev]        lancer le daemon (--dev : policy non scellée, N3 désactivé)

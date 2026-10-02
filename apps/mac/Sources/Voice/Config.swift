@@ -9,9 +9,29 @@ struct VoiceConfig {
     /// British, male: the Jarvis people expect.
     var enVoice = "Daniel"
     var rate: Float = 0.52
+    /// "neural" (Parakeet + PocketTTS, once the models are on disk) or "system" (Apple).
+    var engine = "neural"
+    var frNeural = VoiceCatalog.defaults["fr"] ?? "henri"
+    var enNeural = VoiceCatalog.defaults["en"] ?? "charles"
     var keyCode = UInt32(kVK_Space)
     var modifiers = UInt32(optionKey)
     var hotkeyLabel = "⌥Espace"
+
+    static var root: String {
+        ProcessInfo.processInfo.environment["JARVIS_HOME"] ?? (NSHomeDirectory() + "/Library/Application Support/Jarvis")
+    }
+
+    /// Merges the voice choices into voice.json, keeping any other key Brightky set by hand.
+    func save() {
+        let path = Self.root + "/voice.json"
+        var json = (FileManager.default.contents(atPath: path).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+        json["engine"] = engine
+        json["frNeural"] = frNeural
+        json["enNeural"] = enNeural
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(atPath: Self.root, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: path, contents: data, attributes: [.posixPermissions: 0o600])
+    }
 
     static func load() -> VoiceConfig {
         let env = ProcessInfo.processInfo.environment
@@ -23,6 +43,9 @@ struct VoiceConfig {
         if let v = json["frVoice"] as? String { c.frVoice = v }
         if let v = json["enVoice"] as? String { c.enVoice = v }
         if let v = json["rate"] as? Double { c.rate = Float(min(max(v, 0.3), 0.7)) }
+        if let v = json["engine"] as? String, ["neural", "system"].contains(v) { c.engine = v }
+        if let v = json["frNeural"] as? String { c.frNeural = v }
+        if let v = json["enNeural"] as? String { c.enNeural = v }
         if let v = json["hotkey"] as? String, let (mods, label) = parseModifiers(v) {
             c.modifiers = mods
             c.hotkeyLabel = label
