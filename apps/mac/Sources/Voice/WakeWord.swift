@@ -33,6 +33,14 @@ enum WakeWord {
         return rest.contains(where: { $0.isLetter }) ? .command(rest) : .alone
     }
 
+    /// Is what the microphone heard just Jarvis's own voice (room echo after it spoke)?
+    static func isEcho(_ heard: String, of spoken: String) -> Bool {
+        let words = { (s: String) in s.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map { normalize(String($0)) }.filter { $0.count > 2 } }
+        let h = words(heard), said = Set(words(spoken))
+        guard !h.isEmpty, !said.isEmpty else { return false }
+        return Double(h.filter { said.contains($0) }.count) / Double(h.count) >= 0.6
+    }
+
     private static func distance(_ a: String, _ b: String) -> Int {
         let a = Array(a), b = Array(b)
         var d = Array(0...b.count)

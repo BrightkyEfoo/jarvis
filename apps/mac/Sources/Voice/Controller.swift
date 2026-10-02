@@ -28,6 +28,11 @@ final class Controller {
     }
     /// Hands-free "Jarvis, …" (neural engine only).
     private var wake: WakeWatcher?
+    /// When the key went down: a short tap means "listen until I stop talking" (no holding).
+    private var pressedAt = Date.distantPast
+    /// What Jarvis said last, to tell a follow-up from the room echo of its own voice.
+    private var recentSpeech = ""
+    private var followUpUntil = Date.distantPast
     private var chunker = SpeechChunker()
     private var currentAsk: String?
     private var lang = "fr"
@@ -78,7 +83,17 @@ final class Controller {
         speaker.onIdle = { [weak self] in
             guard let self else { return }
             if self.state == .speaking {
-                if self.pendingApproval != nil { self.state = .confirming } else if self.currentAsk == nil { self.state = .idle }
+                if self.pendingApproval != nil {
+                    self.state = .confirming
+                } else if self.currentAsk == nil {
+                    self.state = .idle
+                    // Conversation: a follow-up does not need the name for a few seconds.
+                    if let wake = self.wake {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            if self.state == .idle { self.listenWithoutName(for: 10, ear: wake) }
+                        }
+                    }
+                }
             }
             self.adoptNeuralIfIdle()
         }
@@ -177,6 +192,7 @@ final class Controller {
         do {
             try listener.start(prefer: lang)
             listeningForAnswer = answering
+            pressedAt = Date()
             state = .listening
             NSSound(named: "Tink")?.play()
         } catch {
@@ -198,6 +214,14 @@ final class Controller {
 
     private func release() {
         guard state == .listening else { return }
+        // Tap (not hold): hand over to the hands-free ear, which ends the sentence on silence.
+        if Date().timeIntervalSince(pressedAt) < 0.35, let wake, !listeningForAnswer {
+            listener.cancel()
+            state = .idle
+            listenWithoutName(for: 8, ear: wake)
+            print("👂 j'écoute (fin de phrase détectée toute seule)")
+            return
+        }
         state = .transcribing
         tRelease = Date()
         NSSound(named: "Pop")?.play()
@@ -224,6 +248,12 @@ final class Controller {
     /// Something said hands-free ("Jarvis, …"): an answer to a pending confirmation, or a request.
     private func heardHandsFree(_ text: String, lang heardLang: String) {
         guard state == .idle || state == .confirming else { return }
+        // The room may play back the end of Jarvis's own answer: that is not Brightky talking.
+        if WakeWord.isEcho(text, of: recentSpeech) {
+            print("(écho de ma propre voix ignoré)")
+            return
+        }
+        followUpUntil = .distantPast
         tRelease = Date()
         sttMs = 0
         if pendingApproval != nil, state == .confirming {
@@ -338,7 +368,18 @@ final class Controller {
         }
     }
 
+    /// The next sentence, said within `seconds`, is for Jarvis even without "Jarvis".
+    private func listenWithoutName(for seconds: TimeInterval, ear: WakeWatcher) {
+        ear.arm(for: seconds)
+        followUpUntil = Date().addingTimeInterval(seconds)
+        onState("listening")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+            if self.state == .idle, Date() >= self.followUpUntil { self.onState("idle") }
+        }
+    }
+
     private func say(_ sentence: String) {
+        recentSpeech = String((recentSpeech + " " + sentence).suffix(600))
         state = .speaking
         speaker.speak(sentence, lang: LanguagePick.replyLanguage(sentence, hint: lang))
     }

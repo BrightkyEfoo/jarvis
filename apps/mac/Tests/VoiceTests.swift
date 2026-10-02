@@ -108,6 +108,8 @@ enum VoiceTests {
         check(WakeWord.match("Jardin fleuri ce matin") == .none, "jardin is not Jarvis")
         check(WakeWord.match("Travis est en retard") == .none, "Travis is not Jarvis")
         check(WakeWord.match("") == .none, "empty")
+        check(WakeWord.isEcho("je peux te faire un briefing", of: "Bonjour Brightky ! Je peux te faire un briefing de ta journée si tu veux."), "own voice is echo")
+        check(!WakeWord.isEcho("ouvre VS Code sur CodeVault", of: "Je peux te faire un briefing de ta journée."), "a new request is not echo")
 
         // Computer control guard, independent of the daemon.
         for url in ["https://www.paypal.com/x", "https://ebanking.ecobank.com", "https://www.afrilandfirstbank.com", "https://github.com/settings/tokens",

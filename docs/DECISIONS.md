@@ -763,3 +763,10 @@ synthèse a été lu « Ai-je revis ? » : d'où la consigne de commencer par «
 
 **Corrigé au passage** : la bascule vers les voix neuronales n'avait pas lieu si Brightky parlait
 pile au moment où elles finissaient de charger. Elle se fait désormais au premier retour au repos.
+
+**Complément (02/10/2026)** : Brightky ne veut jamais avoir à maintenir de touche.
+- **Appui court** sur ⌥Espace (moins de 0,35 s) : il arme l'oreille mains libres pendant 8 s, et
+  la fin de phrase est détectée par la VAD.
+- **Après chaque réponse** : 10 s pendant lesquelles une relance n'a pas besoin du nom.
+- **Écho** : un énoncé dont au moins 60 % des mots viennent de ce que Jarvis vient de dire est
+  ignoré. C'est sa propre voix renvoyée par la pièce, pas une demande.

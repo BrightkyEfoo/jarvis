@@ -2,6 +2,12 @@
 
 ## 0.12.0 — Mains libres, signature stable (02/10/2026)
 
+### Ajouté (suite)
+- **Conversation continue** : après une réponse, Jarvis écoute encore 10 s sans qu'il faille
+  redire son nom. Son propre écho dans la pièce est reconnu et ignoré.
+- **Un simple appui sur ⌥Espace** : tu tapes la touche sans la maintenir, et la fin de phrase
+  est détectée automatiquement. Maintenir la touche fonctionne toujours.
+
 ### Ajouté
 - **« Jarvis, … » sans toucher le clavier** (ADR-029) : détection de parole Silero + Parakeet, le
   tout local. Le nom doit venir en premier. « Jarvis » seul réveille Jarvis, et « oui » / « non »
