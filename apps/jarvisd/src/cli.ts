@@ -346,11 +346,30 @@ async function googleCommand(args: string[]): Promise<void> {
   console.log(
     'Ouverture du navigateur pour autoriser Jarvis (lecture des mails, brouillons, lecture de l’agenda)…',
   );
-  const r = await connectGoogle({
-    client,
-    openUrl: (url) =>
-      new Promise((ok, ko) => execFile('/usr/bin/open', [url], (e) => (e ? ko(e) : ok()))),
-  });
+  let r: Awaited<ReturnType<typeof connectGoogle>>;
+  try {
+    r = await connectGoogle({
+      client,
+      openUrl: (url) =>
+        new Promise((ok, ko) => execFile('/usr/bin/open', [url], (e) => (e ? ko(e) : ok()))),
+    });
+  } catch (e) {
+    const msg = (e as Error).message;
+    console.error(red(`✖ Google a refusé : ${msg}`));
+    // Google shows its 403 page without redirecting: the wait then times out.
+    if (/access_denied|no answer from the browser/.test(msg)) {
+      console.error(
+        [
+          'Si Google a affiché « Erreur 403 : access_denied » : ton app est en mode « Test » et ce compte n’est pas testeur. Au choix :',
+          '  • https://console.cloud.google.com/auth/audience → « Publish app » (recommandé : sinon les tokens expirent après 7 jours)',
+          '  • ou, sur la même page, « Test users » → ajoute l’adresse avec laquelle tu te connectes',
+          'Puis relance la même commande.',
+        ].join('\n'),
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
   store.set(SecretName.googleClient, JSON.stringify(client));
   store.set(SecretName.googleRefreshToken(account), r.refreshToken);
   console.log(

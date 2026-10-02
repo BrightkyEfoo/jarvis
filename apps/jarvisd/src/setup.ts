@@ -193,8 +193,9 @@ export async function runSetup(io: SetupIO): Promise<void> {
         'Google demande un « client OAuth » à toi (gratuit, une fois). Les pages vont s’ouvrir une à une :',
         '  1. Créer le projet « Jarvis »',
         '  2. Activer Gmail API puis Google Calendar API',
-        '  3. Écran de consentement : External, ajoute ton adresse en utilisateur test, puis « Publish app »',
-        '  4. Clients → Create client → Desktop app → télécharger le JSON',
+        '  3. Écran de consentement : External, nom « Jarvis », ton adresse en contact',
+        '  4. Audience : « Publish app » (sinon Google refuse avec « Erreur 403 : access_denied »)',
+        '  5. Clients → Create client → Desktop app → télécharger le JSON',
       ].join('\n'),
     );
     for (const [label, url] of [
@@ -205,6 +206,7 @@ export async function runSetup(io: SetupIO): Promise<void> {
         'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com',
       ],
       ['consentement', 'https://console.cloud.google.com/auth/overview'],
+      ['audience → Publish app', 'https://console.cloud.google.com/auth/audience'],
       ['client Desktop', 'https://console.cloud.google.com/auth/clients/create'],
     ] as const) {
       await io.askLine(`Entrée pour ouvrir : ${label}… `);
