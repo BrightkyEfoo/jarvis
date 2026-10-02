@@ -199,6 +199,27 @@ struct OverviewView: View {
             }
             .padding(16)
 
+            if !store.workers.isEmpty {
+                Card(title: "Workers", systemImage: "hammer") {
+                    ForEach(store.workers) { w in
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: ["done": "checkmark.circle.fill", "failed": "xmark.octagon", "cancelled": "slash.circle", "running": "gearshape.2", "queued": "hourglass"][w.status] ?? "circle")
+                                .foregroundStyle(w.status == "done" ? .green : w.status == "failed" ? .red : .secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(w.title).lineLimit(1)
+                                Text("\(w.repo) · \(w.status == "running" ? w.step : ["done": "PR ouverte", "failed": w.error ?? "échec", "cancelled": "annulée", "queued": "en file"][w.status] ?? w.status)")
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if let url = w.prUrl.flatMap(URL.init(string:)) {
+                                Link("PR", destination: url).font(.caption)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
             Card(title: "Dernières actions", systemImage: "clock.arrow.circlepath") {
                 ForEach(store.audit.prefix(10)) { AuditLine(row: $0) }
             }

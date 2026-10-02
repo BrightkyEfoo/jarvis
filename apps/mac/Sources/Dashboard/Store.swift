@@ -16,6 +16,7 @@ final class Store: ObservableObject {
     @Published var forecast: Forecast?
     @Published var mail: [MailAccount] = []
     @Published var forges: [ForgeAccount] = []
+    @Published var workers: [WorkerTask] = []
     @Published var facts: [Fact] = []
     @Published var notesDir = ""
     @Published var tools: [ToolInfo] = []
@@ -106,6 +107,7 @@ final class Store: ObservableObject {
         forecast = s.forecast
         mail = s.mail
         forges = s.forges ?? []
+        workers = s.workers ?? []
         facts = s.memory.facts
         notesDir = s.memory.notesDir
         tools = s.tools
@@ -171,6 +173,15 @@ final class Store: ObservableObject {
             activity = "Reprise"
             refresh()
         case "quota":
+            refreshSoon()
+        case "worker":
+            let title = a["title"] as? String ?? ""
+            switch a["status"] as? String {
+            case "done": activity = "PR ouverte : « \(title) »"
+            case "failed": activity = "Worker en échec : « \(title) »"
+            case "running": activity = "Worker (\(a["step"] as? String ?? "")) : « \(title) »"
+            default: break
+            }
             refreshSoon()
         default:
             break

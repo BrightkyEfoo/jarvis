@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { AuditLog } from '@jarvis/audit';
 import {
   type CalendarProvider,
@@ -46,6 +47,11 @@ import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
 import { createResearchTools, type YouTube, YtDlp } from '../tools/research.ts';
+import { createWorkerTools } from '../tools/workers.ts';
+import { Git } from '../workers/git.ts';
+import { WorkerManager } from '../workers/manager.ts';
+import { ClaudeWorkerRunner, type WorkerRunner } from '../workers/runner.ts';
+import { TaskStore } from '../workers/store.ts';
 
 export interface BrainContext {
   gate: Gate;
@@ -78,6 +84,8 @@ export interface RuntimeOptions {
   research?: { researcher: Researcher | null; youtube: YouTube | null };
   /** Tests inject a fake Jarvis.app; production waits for the real one on the socket. */
   actuator?: Actuator;
+  /** Tests inject a scripted coding worker; production runs Claude Code through the SDK. */
+  workerRunner?: WorkerRunner;
   /** Tests inject fake forges; production builds them from the Keychain tokens. */
   forges?: { forges: Map<ForgeId, ForgeClient>; trello: TrelloClient | null };
 }
@@ -89,6 +97,16 @@ export type Activity =
   | { kind: 'quota'; window: string; utilization: number | null; status: string }
   | { kind: 'stop'; reason: string }
   | { kind: 'actuator'; connected: boolean }
+  | {
+      kind: 'worker';
+      id: string;
+      status: string;
+      step: string;
+      title: string;
+      repo: string;
+      prUrl?: string | null;
+      error?: string | null;
+    }
   | { kind: 'resume' };
 
 export interface AccountStatus {
@@ -212,6 +230,7 @@ export interface Runtime {
   bridge: ActuatorBridge;
   actuatorInfo(): { connected: boolean; version?: string; capabilities?: string[] };
   forgeStatus(): { id: string; connected: boolean; connect: string }[];
+  workers: { manager: WorkerManager; store: TaskStore };
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
   quotaWarning: string | null;
@@ -346,6 +365,67 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 
+  // Coding workers (S6): Claude Code on the subscription, sandboxed, one worktree per task.
+  const events = new EventEmitter<{ activity: [Activity] }>();
+  const taskStore = new TaskStore(paths.workersDb);
+  const workerRunner =
+    o.workerRunner ??
+    (oauthToken
+      ? new ClaudeWorkerRunner({
+          home: o.home,
+          oauthToken,
+          configDir: paths.workerConfig,
+          tmpDir: join(policy.workers.dir, 'tmp'),
+          cacheDir: join(policy.workers.dir, 'cache'),
+          maxTurns: policy.workers.max_turns,
+          maxBudgetUsd: policy.workers.max_budget_usd,
+          network: policy.workers.network,
+          denyRead: [
+            ...[
+              '.ssh',
+              '.aws',
+              '.gnupg',
+              '.config/gh',
+              '.netrc',
+              '.npmrc',
+              '.docker',
+              '.kube',
+              'Library/Keychains',
+              'Library/Cookies',
+            ].map((p) => join(o.home, p)),
+            paths.root,
+            ...policy.filesystem.deny,
+          ],
+        })
+      : null);
+  const reserve = policy.quota.reserve_interactive_pct / 100;
+  const workerManager = new WorkerManager({
+    store: taskStore,
+    git: new Git({ env: { HOME: o.home } }),
+    runner: workerRunner,
+    forges: forges.forges,
+    audit,
+    killswitch,
+    containsSecret: (text) => redactor.redact(text) !== text,
+    emit: (e) => events.emit('activity', { kind: 'worker', ...e }),
+    home: o.home,
+    dir: policy.workers.dir,
+    logsDir: paths.workerLogs,
+    extraDeny: policy.filesystem.deny,
+    maxParallel: policy.workers.max_parallel,
+    draftPr: policy.workers.draft_pr,
+    // Background work stops before eating the share kept for Brightky's own requests.
+    quotaOk: () => (quota.get('five_hour')?.utilization ?? 0) < 1 - reserve,
+  });
+  for (const t of createWorkerTools({
+    manager: workerManager,
+    store: taskStore,
+    policy,
+    forges: () => [...forges.forges.keys()],
+  }))
+    gate.register(t);
+  workerManager.pump();
+
   const rt: Runtime = {
     policy,
     audit,
@@ -355,11 +435,12 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     gate,
     memory,
     mail: { providers: built.providers, status: built.status, calendar: built.calendar },
-    events: new EventEmitter<{ activity: [Activity] }>(),
+    events,
     startedAt: Date.now(),
     quota,
     brain: null,
     bridge,
+    workers: { manager: workerManager, store: taskStore },
     forgeStatus: () =>
       (['github', 'gitlab', 'trello'] as const).map((id) => ({
         id,
@@ -376,7 +457,9 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     close: async () => {
       await rt.brain?.close();
       audit.append({ event: 'system', outcome: 'shutdown' });
+      await workerManager.shutdown();
       audit.close();
+      taskStore.close();
       memory.close();
     },
   };

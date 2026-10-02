@@ -45,6 +45,9 @@ export const RequestSchema = z.discriminatedUnion('cmd', [
   z.object({ id, cmd: z.literal('watch') }).strict(),
   z.object({ id, cmd: z.literal('upcoming') }).strict(),
   z
+    .object({ id, cmd: z.literal('workers'), limit: z.number().int().min(1).max(100).optional() })
+    .strict(),
+  z
     .object({
       id,
       cmd: z.literal('audit_query'),

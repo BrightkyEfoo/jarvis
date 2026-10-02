@@ -110,6 +110,8 @@ enum DemoData {
             forges: [ForgeAccount(id: "github", connected: true, connect: "jarvis github connect"),
                      ForgeAccount(id: "gitlab", connected: false, connect: "jarvis gitlab connect"),
                      ForgeAccount(id: "trello", connected: true, connect: "jarvis trello connect")],
+            workers: [WorkerTask(id: "3fa9c1d2", repo: "BrightkyEfoo/codevault", title: "Ajoute le mode sombre", status: "running", step: "implémentation", prUrl: nil, error: nil, createdAt: iso(now)),
+                      WorkerTask(id: "8b21e0aa", repo: "acme/app", title: "Corrige le délai de connexion", status: "done", step: "PR ouverte", prUrl: "https://github.com/acme/app/pull/41", error: nil, createdAt: iso(now))],
             memory: MemoryInfo(facts: [Fact(id: 3, kind: "preference", text: "Ton des mails : pro et direct", source: "jarvis", createdAt: iso(now)),
                                        Fact(id: 2, kind: "project", text: "CodeVault : Next.js, déployé sur Coolify", source: "jarvis", createdAt: iso(now))],
                                notesDir: NSHomeDirectory() + "/Jarvis/memory"),

@@ -133,6 +133,26 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   signature auto-signée, qui sert à stabiliser l'identité TCC de l'app. Son mot de passe est
   aléatoire, et ce n'est pas celui de Brightky.
 
+## Workers Claude Code (S6)
+
+- **Fichiers** : le worker ne lit et n'écrit que son worktree. Hook PreToolUse côté daemon,
+  realpath, chaque refus audité.
+- **Bash** : il tourne dans la sandbox macOS de Claude Code.
+  - Écriture : worktree, tmp et cache de paquets seulement.
+  - Réseau : registres de paquets seulement.
+  - Lecture interdite : clés SSH, comptes cloud, `~/.npmrc`, Trousseaux, cookies et données de
+    Jarvis.
+- **Commandes toujours refusées** : publication (`git push/remote/config`, `npm publish`, `gh`),
+  clients réseau, accès distants, élévation de privilèges, Trousseau.
+- **Ne partent jamais** : configuration CI (`.github/workflows`, `.gitlab-ci.yml`), `.env*`,
+  clés, secrets détectés dans le diff.
+- **Identité** : commit unique au nom de Brightky, sans trailer ni mention IA. Push sur
+  `jarvis/*` uniquement, PR ouverte, **jamais de merge**.
+- **Token git** : il passe par un helper d'identifiants à usage unique, jamais dans une URL, dans
+  `.git/config` ou dans un message d'erreur.
+- **Paramètres d'un dépôt** : ceux de `.claude/settings.json` sont ignorés (`settingSources: []`),
+  sinon un dépôt pourrait installer ses propres hooks ou une clé API.
+
 ## Forges (GitHub, GitLab, Trello)
 
 - **Tokens**
@@ -197,7 +217,7 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 |---|---|---|---|
 | R1 | Un process tournant sous ton utilisateur peut parler au socket : approuver du N2, déclencher STOP | Socket 0600 ; N3 et la reprise exigent le PIN | S12 : `sandbox-exec` pour `shell_run` et les workers, vérification du PID pair |
 | R2 | Les éléments du Trousseau créés par `node` sont lisibles par un autre process `node` du même utilisateur | Environnement nettoyé, préfixe `jarvis.*` | S12 : binaire signé (Node SEA) ou utilisateur dédié pour les workers |
-| R3 | N1 + runners autorisés (`pnpm test`, `pnpm run`) = exécution locale du code du workspace sans approbation | Workspace confiné à `~/jarvis-work`, env sans secrets | S12 : sandbox sans réseau ni accès aux secrets |
+| R3 | N1 + runners autorisés (`pnpm test`, `pnpm run`) = exécution locale du code du workspace sans approbation | Workspace confiné à `~/jarvis-work`, env sans secrets ; **les workers (S6) tournent dans la sandbox macOS** (écriture et réseau limités) | S12 : même sandbox pour `shell_run` |
 | R4 | TOCTOU entre la vérification d'un chemin et son usage | Nouvelle vérification à l'exécution, `O_NOFOLLOW` sur le dernier composant | Ouverture relative par descripteur de dossier (S12) |
 | R5 | Ambiguïté des conditions d'Anthropic : Agent SDK sur abonnement pour un agent perso | Usage individuel, adaptateur d'auth prévu | Surveiller la page *legal-and-compliance* |
 | R6 | La rédaction reste imparfaite pour des formats de secrets inconnus | La vraie défense est que les fichiers secrets sont illisibles (N4) | Élargir les motifs au fil des intégrations |

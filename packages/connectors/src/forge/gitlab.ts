@@ -9,7 +9,9 @@ import {
   type ForgeInbox,
   type Issue,
   type IssueDetail,
+  type NewChange,
   REPO_PATH,
+  type RepoInfo,
 } from './types.ts';
 
 interface GlUser {
@@ -86,10 +88,13 @@ function checks(status: string | undefined): ChecksState {
 /** GitLab REST v4 (gitlab.com or self-hosted) with a personal access token. */
 export class GitLabClient implements ForgeClient {
   readonly forge = 'gitlab' as const;
+  readonly gitUser = 'oauth2';
+  readonly #token: () => string;
   readonly #http: HttpJson;
   #login: string | null = null;
 
   constructor(o: { token: () => string; base?: string; fetch?: FetchFn }) {
+    this.#token = o.token;
     const root = (o.base ?? 'https://gitlab.com').replace(/\/+$/, '');
     if (!root.startsWith('https://')) throw new Error('GitLab must be reached over https');
     this.#http = new HttpJson({
@@ -311,6 +316,40 @@ export class GitLabClient implements ForgeClient {
         .filter((n) => !n.system)
         .map((n) => ({ author: who(n.author), body: n.body, at: n.created_at })),
     };
+  }
+
+  gitToken(): string {
+    return this.#token();
+  }
+
+  async repoInfo(repo: string): Promise<RepoInfo> {
+    const p = await this.#http.get<{
+      default_branch: string;
+      visibility: string;
+      http_url_to_repo: string;
+    }>(`/projects/${project(repo)}`);
+    return {
+      defaultBranch: p.default_branch,
+      private: p.visibility !== 'public',
+      cloneUrl: p.http_url_to_repo,
+    };
+  }
+
+  async openChange(c: NewChange): Promise<{ number: number; url: string }> {
+    const r = await this.#http.request<{ iid: number; web_url: string }>(
+      'POST',
+      `/projects/${project(c.repo)}/merge_requests`,
+      {
+        body: {
+          source_branch: c.head,
+          target_branch: c.base,
+          title: c.draft ? `Draft: ${c.title}` : c.title,
+          description: c.body,
+          remove_source_branch: true,
+        },
+      },
+    );
+    return { number: r.data.iid, url: r.data.web_url };
   }
 
   async comment(

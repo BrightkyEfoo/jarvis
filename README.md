@@ -89,6 +89,8 @@ jarvis "compare Tauri et Electron pour notre HUD"   # recherche web sourcée
 jarvis "résume-moi cette vidéo https://youtu.be/arj7oStGLkU"   # via les sous-titres
 jarvis "qu'est-ce qui m'attend sur GitHub ?"    # PR à relire, mes PR (CI, relectures), issues
 jarvis "résume-moi la PR 7 de acme/app"           # diff expliqué en mots simples
+jarvis "ajoute le mode sombre à BrightkyEfoo/codevault"   # un worker code, teste, ouvre la PR
+jarvis workers                 # tâches des workers : en file, en cours, PR ouvertes
 jarvis "quelle heure est-il ?"
 jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "sur GitHub, ouvre la PR #7 de CodeVault et résume les commentaires"   # pilote Arc

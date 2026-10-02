@@ -214,9 +214,16 @@ importers:
       '@jarvis/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets
+      better-sqlite3:
+        specifier: 13.0.3
+        version: 13.0.3
       zod:
         specifier: 4.6.5
         version: 4.6.5
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: 9.6.0
+        version: 9.6.0
 
   packages/audit:
     dependencies:

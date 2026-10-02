@@ -110,6 +110,16 @@ forges:
   max_diff_chars: 60000
   trello_label: jarvis
 
+# Claude Code workers (S6): one git worktree per task, macOS sandbox for the shell, one clean
+# commit in Brightky's name, push to a jarvis/… branch, PR opened (never merged).
+workers:
+  max_parallel: 1 # Max 5x: 2 at most is comfortable
+  model: claude-sonnet-5-5 # "complex" tasks use models.planning (Opus)
+  max_turns: 150
+  max_budget_usd: 15 # anti-runaway cap per task, API-equivalent (the subscription pays)
+  draft_pr: false
+  dir: ~/jarvis-work/.jarvis-workers
+
 # Driving the Mac when there is no API: Brightky's browser profile, Notes, Reminders, and any app
 # through screenshots + clicks/keystrokes (done by Jarvis.app, which holds the macOS permissions).
 # Built into the code and NOT relaxable here: banking/payment/password/account-security sites,

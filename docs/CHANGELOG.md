@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 — S6 : workers Claude Code (02/10/2026)
+
+### Ajouté
+- **Workers** (ADR-027). File SQLite → clone partiel de Jarvis → worktree → Claude Code (Agent
+  SDK, abonnement) → vérifications → commit unique au nom de Brightky → branche `jarvis/…` → PR.
+- **Sécurité** :
+  - hook PreToolUse qui limite les fichiers et les commandes au worktree ;
+  - sandbox macOS pour Bash (écriture limitée, réseau réservé aux registres) ;
+  - aucun fichier CI ni secret ne part ;
+  - aucune mention IA dans les commits et les PR ;
+  - push uniquement sur `jarvis/*`, jamais de merge.
+- **Outils** : `worker_start` (N1), `worker_status`, `worker_cancel`, `worker_log`.
+- **CLI** : `jarvis workers`. **Tableau de bord** : carte Workers, activité en direct.
+- **Forges** : ouverture de PR (GitHub) et de MR (GitLab), informations sur le dépôt.
+- **Politique** : section `workers` (parallélisme, modèle, plafonds, brouillon, dossier, réseau).
+- **Tests** : 8 tests du garde-fou, 6 tests e2e sur un vrai git et 1 test Swift.
+
 ## 0.9.0 — S5 : GitHub, GitLab et Trello (02/10/2026)
 
 ### Ajouté

@@ -224,6 +224,12 @@ async function handle(
       return;
     }
 
+    case 'workers':
+      return done({
+        tasks: rt.workers.store.list(req.limit ?? 20),
+        active: rt.workers.manager.active,
+      });
+
     case 'upcoming': {
       const cal = rt.mail.calendar;
       if (!cal) return done({ events: [], note: 'agenda non connecté' });
@@ -411,6 +417,16 @@ function dashboardSnapshot(rt: Runtime) {
     },
     mail: rt.mail.status,
     forges: rt.forgeStatus(),
+    workers: rt.workers.store.list(8).map((t) => ({
+      id: t.id,
+      repo: t.repo,
+      title: t.title,
+      status: t.status,
+      step: t.step,
+      prUrl: t.prUrl,
+      error: t.error,
+      createdAt: t.createdAt,
+    })),
     memory: { facts: rt.memory.list(100), notesDir: rt.memory.notesDir },
     tools: rt.gate.tools.map((t) => ({ name: t.name, description: t.description })),
     signature: "fait avec ❤️ par Brightky Efo'o — https://brightkyefoo.cm",

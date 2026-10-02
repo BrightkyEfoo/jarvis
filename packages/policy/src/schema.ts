@@ -159,6 +159,40 @@ export const PolicySchema = z
       })
       .strict()
       .prefault({}),
+    workers: z
+      .object({
+        /** Claude Code workers running at once (Max 5x: 1 to 2 is comfortable, 3 at most). */
+        max_parallel: z.number().int().min(1).max(3).prefault(1),
+        /** Model for ordinary tasks; "complex" tasks use models.planning. */
+        model: z.string().prefault('claude-sonnet-5-5'),
+        max_turns: z.number().int().min(10).max(500).prefault(150),
+        /** Anti-runaway cap per task, in API-equivalent dollars (the subscription is what is used). */
+        max_budget_usd: z.number().positive().max(100).prefault(15),
+        /** Open pull requests as drafts. */
+        draft_pr: z.boolean().prefault(false),
+        /** Where Jarvis keeps its own clones, worktrees and package caches. */
+        dir: z.string().prefault('~/jarvis-work/.jarvis-workers'),
+        /** Hosts the sandboxed shell may reach: package registries only. */
+        network: z
+          .array(z.string().regex(/^[a-z0-9.*-]+$/))
+          .prefault([
+            'registry.npmjs.org',
+            'registry.yarnpkg.com',
+            'pypi.org',
+            'files.pythonhosted.org',
+            'crates.io',
+            'index.crates.io',
+            'static.crates.io',
+            'proxy.golang.org',
+            'sum.golang.org',
+            'repo.maven.apache.org',
+            'plugins.gradle.org',
+            'services.gradle.org',
+            'jsr.io',
+          ]),
+      })
+      .strict()
+      .prefault({}),
     computer: z
       .object({
         /** Browser Jarvis drives (Brightky's own profile, through AppleScript). */

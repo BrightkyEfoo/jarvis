@@ -10,7 +10,9 @@ import {
   type ForgeInbox,
   type Issue,
   type IssueDetail,
+  type NewChange,
   REPO_PATH,
+  type RepoInfo,
 } from './types.ts';
 
 interface GhUser {
@@ -93,10 +95,13 @@ function checkRepo(repo: string): string {
 /** GitHub REST v3 with a fine-grained token (Bearer, from the Keychain). */
 export class GitHubClient implements ForgeClient {
   readonly forge = 'github' as const;
+  readonly gitUser = 'x-access-token';
+  readonly #token: () => string;
   readonly #http: HttpJson;
   #login: string | null = null;
 
   constructor(o: { token: () => string; fetch?: FetchFn; base?: string }) {
+    this.#token = o.token;
     this.#http = new HttpJson({
       base: o.base ?? 'https://api.github.com',
       auth: () => ({ authorization: `Bearer ${o.token()}` }),
@@ -359,6 +364,37 @@ export class GitHubClient implements ForgeClient {
         at: c.created_at,
       })),
     };
+  }
+
+  gitToken(): string {
+    return this.#token();
+  }
+
+  async repoInfo(repo: string): Promise<RepoInfo> {
+    checkRepo(repo);
+    const r = await this.#http.get<{ default_branch: string; private: boolean; clone_url: string }>(
+      `/repos/${repo}`,
+    );
+    return { defaultBranch: r.default_branch, private: r.private, cloneUrl: r.clone_url };
+  }
+
+  async openChange(c: NewChange): Promise<{ number: number; url: string }> {
+    checkRepo(c.repo);
+    const r = await this.#http.request<{ number: number; html_url: string }>(
+      'POST',
+      `/repos/${c.repo}/pulls`,
+      {
+        body: {
+          title: c.title,
+          head: c.head,
+          base: c.base,
+          body: c.body,
+          draft: c.draft,
+          maintainer_can_modify: true,
+        },
+      },
+    );
+    return { number: r.data.number, url: r.data.html_url };
   }
 
   async comment(

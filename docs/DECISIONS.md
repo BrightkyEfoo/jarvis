@@ -658,3 +658,48 @@ de streaming), Qwen3-TTS et Kyutai TTS 1,6 B (trop lourds pour le M1 Pro avec le
 
 **Choix reporté au S6/S7** : ouvrir des PR, merger, lancer les workers, prendre les cartes
 étiquetées `jarvis` (`forges.trello_label`).
+
+## ADR-027 — S6 : workers Claude Code (02/10/2026)
+
+**Décision.** Une tâche (« code-moi … sur owner/repo ») suit ce chemin :
+1. Jarvis la met en file (SQLite, qui survit aux redémarrages) ;
+2. il prend **son propre clone partiel** (`--filter=blob:none`), jamais les copies de travail de
+   Brightky, et y crée un **worktree** ;
+3. **Claude Code** travaille via l'Agent SDK, sur l'abonnement ;
+4. Jarvis vérifie le résultat et fait **un commit propre au nom de Brightky** ;
+5. il pousse une branche **`jarvis/…`** et ouvre une **PR**, jamais un merge.
+
+**Défense en profondeur** (le worker exécute du code du dépôt et lit des textes externes) :
+
+| Couche | Ce qu'elle impose |
+|---|---|
+| Hook PreToolUse (`workers/guard.ts`, fonction du daemon, chaque refus audité) | Lecture et écriture **dans le worktree seulement** (realpath : liens symboliques et `..` neutralisés). Jamais `.git/`, `.github/workflows/`, `.gitlab-ci.yml`, `.env*`, `*.pem`. Shell parsé : refus de `git push/remote/config/clone`, `git -c`, `curl/wget/ssh/scp/nc`, `gh/glab`, `sudo/security/osascript`, `npm|pnpm publish/login`, docker, cloud et suppressions hors du worktree. Seuls les outils de code existent : pas de WebFetch, WebSearch ni sous-agents. |
+| Sandbox macOS de Claude Code (`sandbox.enabled`, `failIfUnavailable`) | Bash écrit seulement dans le worktree, son tmp et le cache de paquets de Jarvis. Réseau limité aux registres (npm, PyPI, crates, Go, Maven, JSR). Lecture interdite de `~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.npmrc`, Trousseaux, cookies et données de Jarvis. |
+| Isolation du SDK | `settingSources: []` : le `.claude/settings.json` d'un dépôt ne peut pas installer de hooks ni de clé API. Le `CLAUDE.md` du projet est injecté comme consigne. Env construit de zéro, abonnement vérifié (`accountInfo`). |
+| Vérifications avant envoi | Squash sur la base, diff non vide, aucun fichier protégé, **aucun secret** (rédacteur : secrets connus et motifs de tokens), titre et corps nettoyés de toute mention IA, puis contrôle final du message. |
+| Publication | Push d'une branche correspondant à `^jarvis/` uniquement, différente de la base, vers l'URL https du dépôt. Le token passe par un helper d'identifiants à usage unique : jamais dans l'URL, ni dans `.git/config`, ni dans les erreurs. |
+
+- **Attribution** : `settings.attribution = { commit: '', pr: '', sessionUrl: false }`, format
+  vérifié dans les types du SDK 0.3.285. Jarvis fait le commit lui-même, avec l'identité git de
+  Brightky (ADR-023).
+- **Niveau** : `worker_start` est N1. Brightky a décidé que les PR s'ouvrent sans demander. Le
+  merge reste hors de portée.
+  - Si la consigne est écrite après lecture d'un contenu externe (issue, carte), elle est
+    **encadrée comme donnée** dans le prompt du worker.
+- **Garde-fous** : `max_turns` 150 et `max_budget_usd` 15 (équivalent API) par tâche. La file
+  s'arrête avant d'entamer la réserve interactive du quota (`quota.reserve_interactive_pct`).
+  STOP annule tout, et une tâche interrompue par un redémarrage est marquée en échec, jamais
+  reprise à l'aveugle.
+- **Caches** : npm, pnpm, pip, cargo et go pointent vers `workers.dir/cache`, partagé entre les
+  tâches. C'est accessible en écriture dans la sandbox, séparé des caches de Brightky, et évite de
+  tout retélécharger (connexion limitée).
+
+**Tests** :
+- 8 tests du garde-fou ;
+- 6 tests e2e sur un vrai git (un dépôt nu joue GitHub) avec un faux agent : commit unique à son
+  nom et sans trailer, branche `jarvis/`, PR ; fichier CI refusé ; secret dans le diff, donc
+  rien n'est poussé ; aucun changement, donc pas de PR ; STOP ; consigne externe encadrée.
+
+**Non testé en réel** : l'agent Claude Code lui-même. Il faut le token d'abonnement (`jarvis auth
+set-token`) et un token GitHub, ce qui consomme du quota. C'est la première chose à faire avec
+Brightky.

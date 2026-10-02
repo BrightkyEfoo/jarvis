@@ -24,6 +24,7 @@ import type {
   MailHeader,
   MailMessage,
   MailProvider,
+  NewChange,
   TrelloCardDetail,
   TrelloClient,
 } from '@jarvis/connectors';
@@ -41,6 +42,7 @@ import type {
   ResearchResult,
 } from '../../apps/jarvisd/src/orchestrator/research.ts';
 import type { VideoHit, VideoInfo, YouTube } from '../../apps/jarvisd/src/tools/research.ts';
+import type { WorkerRunner } from '../../apps/jarvisd/src/workers/runner.ts';
 
 /** Records research requests; answers with a fixed, sourced result. */
 export class FakeResearcher implements Researcher {
@@ -218,7 +220,26 @@ export class FakeMac implements MacOps {
 /** One GitHub with a PR to review and one of Brightky's own; records comments. */
 export class FakeForge implements ForgeClient {
   readonly forge = 'github' as const;
+  readonly gitUser = 'x-access-token';
   readonly comments: { repo: string; number: number; kind: string; body: string }[] = [];
+  readonly opened: NewChange[] = [];
+  /** Local bare repositories standing in for GitHub (repo → path). */
+  readonly remotes = new Map<string, string>();
+  gitToken() {
+    return '';
+  }
+  async repoInfo(repo: string) {
+    const path = this.remotes.get(repo);
+    if (!path) throw new Error(`no such repo ${repo}`);
+    return { defaultBranch: 'main', private: true, cloneUrl: `file://${path}` };
+  }
+  async openChange(c: NewChange) {
+    this.opened.push(c);
+    return {
+      number: 40 + this.opened.length,
+      url: `https://github.com/${c.repo}/pull/${40 + this.opened.length}`,
+    };
+  }
   readonly #pr = {
     forge: 'github' as const,
     repo: 'acme/app',
@@ -372,7 +393,9 @@ export interface Rpc {
   close(): void;
 }
 
-export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Harness> {
+export async function startHarness(
+  opts: { devMode?: boolean; workerRunner?: WorkerRunner } = {},
+): Promise<Harness> {
   // Short root: macOS caps Unix socket paths at 104 bytes.
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'jv-')));
   const home = join(base, 'h');
@@ -382,6 +405,11 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
   writeFileSync(join(home, '.ssh', 'id_rsa'), 'PRIVATE KEY');
   writeFileSync(join(work, 'notes.md'), `# notes\ntoken: ${CANARY_TOKEN}\n`);
   writeFileSync(join(work, 'draft.txt'), 'draft');
+  // Commits made by workers carry this identity (Brightky's ~/.gitconfig in real life).
+  writeFileSync(
+    join(home, '.gitconfig'),
+    '[user]\n\tname = Brightky Test\n\temail = brightky@example.com\n',
+  );
   symlinkSync(join(home, '.ssh'), join(work, 'shortcut'));
 
   const secrets = new MemoryStore();
@@ -416,6 +444,7 @@ export async function startHarness(opts: { devMode?: boolean } = {}): Promise<Ha
       summarizer: new FakeSummarizer(),
     },
     research: { researcher, youtube: new FakeYouTube() },
+    ...(opts.workerRunner && { workerRunner: opts.workerRunner }),
   });
   const server = await startServer(rt, paths.socket);
 

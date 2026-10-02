@@ -14,6 +14,11 @@ export interface AppPaths {
   claudeConfig: string;
   /** Scratch space for the Agent SDK subprocess. */
   scratch: string;
+  /** Worker queue (SQLite) and per-task logs. */
+  workersDb: string;
+  workerLogs: string;
+  /** CLAUDE_CONFIG_DIR of the coding workers (separate from the brain's). */
+  workerConfig: string;
 }
 
 export const DEFAULT_ROOT = join(homedir(), 'Library', 'Application Support', 'Jarvis');
@@ -30,5 +35,8 @@ export function appPaths(root = process.env.JARVIS_HOME ?? DEFAULT_ROOT): AppPat
     outbox: join(root, 'outbox'),
     claudeConfig: join(root, 'claude-config'),
     scratch: join(root, 'scratch'),
+    workersDb: join(root, 'data', 'workers.db'),
+    workerLogs: join(root, 'logs', 'workers'),
+    workerConfig: join(root, 'worker-config'),
   };
 }

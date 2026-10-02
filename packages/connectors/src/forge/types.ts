@@ -74,6 +74,23 @@ export interface ForgeInbox {
   issues: Issue[];
 }
 
+export interface RepoInfo {
+  defaultBranch: string;
+  private: boolean;
+  /** https clone URL (the token is given to git separately, never in the URL). */
+  cloneUrl: string;
+}
+
+export interface NewChange {
+  repo: string;
+  /** Branch pushed by Jarvis (always jarvis/…). */
+  head: string;
+  base: string;
+  title: string;
+  body: string;
+  draft: boolean;
+}
+
 export interface ForgeClient {
   readonly forge: ForgeId;
   whoami(): Promise<string>;
@@ -92,6 +109,13 @@ export interface ForgeClient {
     kind: 'change' | 'issue',
     body: string,
   ): Promise<{ url: string }>;
+  repoInfo(repo: string): Promise<RepoInfo>;
+  /** Opens a PR/MR. Never merges. */
+  openChange(c: NewChange): Promise<{ number: number; url: string }>;
+  /** Username git presents over https with the token (x-access-token, oauth2). */
+  readonly gitUser: string;
+  /** The token, for git only (credential helper), read at use time. */
+  gitToken(): string;
 }
 
 /** owner/repo, or group/subgroup/project for GitLab. No "." / ".." segment (path traversal). */

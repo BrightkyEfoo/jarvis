@@ -98,6 +98,7 @@ export function loadPolicy(opts: LoadPolicyOptions): Policy {
     },
     projects,
     memory: { ...parsed.memory, notes_dir: expandHome(parsed.memory.notes_dir, home) },
+    workers: { ...parsed.workers, dir: expandHome(parsed.workers.dir, home) },
     sha256: digest,
     path: opts.path,
     sealed: opts.requireSealed,

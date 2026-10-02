@@ -521,6 +521,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
   jarvis google connect <client.json> [compte]  connecter Gmail + Agenda (OAuth)
   jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
+  jarvis workers               tâches des workers Claude Code (en file, en cours, PR ouvertes)
   jarvis github connect        token GitHub fine-grained → Trousseau
   jarvis gitlab connect [url]  token GitLab → Trousseau
   jarvis trello connect        clé + token Trello → Trousseau
@@ -716,6 +717,28 @@ async function main(argv: string[]): Promise<void> {
       return serviceCommand(rest);
     case 'mail':
       return mailCommand(rest);
+    case 'workers':
+      return simple({ cmd: 'workers' }, (d) => {
+        const { tasks } = d as {
+          tasks: {
+            id: string;
+            repo: string;
+            title: string;
+            status: string;
+            step: string;
+            prUrl: string | null;
+            error: string | null;
+          }[];
+        };
+        if (tasks.length === 0)
+          return console.log('Aucune tâche. Dis à Jarvis : « code-moi … sur owner/repo ».');
+        for (const t of tasks) {
+          const state = t.status === 'running' ? `${t.status} (${t.step})` : t.status;
+          console.log(
+            `${t.id}  ${state.padEnd(24)} ${t.repo.padEnd(28)} ${t.title}${t.prUrl ? `\n          → ${t.prUrl}` : ''}${t.error ? `\n          ✖ ${t.error}` : ''}`,
+          );
+        }
+      });
     case 'github':
     case 'gitlab':
     case 'trello':

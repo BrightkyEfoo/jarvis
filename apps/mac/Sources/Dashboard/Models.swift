@@ -165,9 +165,21 @@ struct Snapshot: Decodable {
     let mail: [MailAccount]
     /// GitHub / GitLab / Trello (absent from older daemons).
     var forges: [ForgeAccount]? = nil
+    var workers: [WorkerTask]? = nil
     let memory: MemoryInfo
     let tools: [ToolInfo]
     let signature: String
+}
+
+struct WorkerTask: Decodable, Identifiable, Hashable {
+    let id: String
+    let repo: String
+    let title: String
+    let status: String
+    let step: String
+    let prUrl: String?
+    let error: String?
+    let createdAt: String
 }
 
 struct ForgeAccount: Decodable, Identifiable, Hashable {
