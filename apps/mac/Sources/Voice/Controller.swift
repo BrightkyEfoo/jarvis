@@ -396,8 +396,8 @@ final class Controller {
         }
         if error.contains("STOP") {
             return lang == "fr"
-                ? "Je suis à l'arrêt : STOP est enclenché. Pour reprendre, menu Jarvis, Reprendre, avec ton PIN."
-                : "I'm stopped: STOP is engaged. To resume, open the Jarvis menu, Resume, with your PIN."
+                ? "Je suis à l'arrêt : STOP est enclenché. Pour reprendre, clique sur l'icône Jarvis en haut de l'écran et tape ton PIN."
+                : "I'm stopped: STOP is engaged. To resume, click the Jarvis icon at the top of the screen and type your PIN."
         }
         if error == "interrupted" { return "" }
         return lang == "fr" ? "Je n'ai pas pu répondre." : "I couldn't answer."

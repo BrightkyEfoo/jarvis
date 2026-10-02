@@ -75,6 +75,59 @@ struct StopButton: View {
     }
 }
 
+/// PIN → resume, right where STOP shows (menu bar and dashboard banner): no window to find.
+struct ResumeForm: View {
+    @EnvironmentObject var store: Store
+    @State private var pin = ""
+    @State private var error: String?
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                SecureField("PIN", text: $pin)
+                    .frame(width: 110)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(resume)
+                Button("Reprendre", action: resume).disabled(pin.count < 6 || busy)
+            }
+            if let error { Text(error).font(.caption.weight(.semibold)) }
+        }
+    }
+
+    private func resume() {
+        guard pin.count >= 6, !busy else { return }
+        busy = true
+        store.resume(pin: pin) { e in
+            busy = false
+            error = e.map(Self.french)
+            if e == nil { pin = "" }
+        }
+    }
+
+    static func french(_ e: String) -> String {
+        if e.contains("wrong PIN") { return "PIN incorrect" }
+        if e.contains("locked") { return "PIN bloqué 15 min (trop d'essais)" }
+        if e.contains("no PIN") { return "Aucun PIN : lance « jarvis pin set » dans Terminal" }
+        return e
+    }
+}
+
+/// An accessory app's window can open on another Space or behind the active app: pull it here.
+enum DashboardWindow {
+    static func bringFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            for w in NSApp.windows where w.identifier?.rawValue.hasPrefix("dashboard") == true || w.title == "Jarvis" {
+                w.collectionBehavior.insert(.moveToActiveSpace)
+                if w.isMiniaturized { w.deminiaturize(nil) }
+                w.makeKeyAndOrderFront(nil)
+                w.orderFrontRegardless()
+            }
+        }
+    }
+}
+
 struct Signature: View {
     var text: String
 

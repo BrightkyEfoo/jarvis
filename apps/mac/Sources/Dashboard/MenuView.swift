@@ -79,12 +79,16 @@ struct MenuView: View {
             }
 
             Divider()
-            HStack {
-                if store.stopped {
-                    Button("Reprendre…") { openDashboard() }
-                } else {
-                    StopButton(source: "barre de menus")
+            if store.stopped {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("À l'arrêt (STOP) — ton PIN pour reprendre", systemImage: "stop.circle.fill")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.red)
+                    if let why = store.status?.stop { Text(why).font(.caption).foregroundStyle(.secondary) }
+                    ResumeForm()
                 }
+            }
+            HStack {
+                if !store.stopped { StopButton(source: "barre de menus") }
                 Spacer()
                 Button("Tableau de bord") { openDashboard() }.keyboardShortcut("d")
             }
@@ -101,6 +105,6 @@ struct MenuView: View {
 
     private func openDashboard() {
         openWindow(id: "dashboard")
-        NSApp.activate(ignoringOtherApps: true)
+        DashboardWindow.bringFront()
     }
 }

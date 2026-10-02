@@ -93,8 +93,6 @@ struct ConnectionPill: View {
 
 struct StopBanner: View {
     @EnvironmentObject var store: Store
-    @State private var pin = ""
-    @State private var error: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -102,17 +100,9 @@ struct StopBanner: View {
             VStack(alignment: .leading) {
                 Text("Jarvis est à l'arrêt (STOP)").font(.headline)
                 Text(store.status?.stop ?? "").font(.caption)
-                if let error { Text(error).font(.caption).foregroundStyle(.yellow) }
             }
             Spacer()
-            SecureField("PIN", text: $pin).frame(width: 110).textFieldStyle(.roundedBorder)
-            Button("Reprendre") {
-                store.resume(pin: pin) { e in
-                    error = e
-                    if e == nil { pin = "" }
-                }
-            }
-            .disabled(pin.count < 6)
+            ResumeForm()
         }
         .padding(12)
         .foregroundStyle(.white)

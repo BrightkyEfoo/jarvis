@@ -10,7 +10,10 @@
   - ⌃⎋ reste une seule touche.
   - La raison indique la source (barre de menus, tableau de bord, ⌃⎋) dans l'audit et sur la
     bannière.
-- **Jarvis à l'arrêt** : il dit maintenant comment reprendre (menu Jarvis → Reprendre, PIN). Après
+- **Reprendre sans chercher de fenêtre** : le PIN se tape directement dans le menu Jarvis quand
+  STOP est enclenché. Le tableau de bord pouvait s'ouvrir hors de l'écran visible (autre bureau,
+  derrière l'app active) : il est maintenant ramené devant.
+- **Jarvis à l'arrêt** : il dit maintenant comment reprendre (icône Jarvis, PIN). Après
   une réponse d'erreur, il n'ouvre plus de fenêtre d'écoute sans le nom. Avant, le bruit de la
   pièce y entrait et recevait la même erreur, en boucle.
 

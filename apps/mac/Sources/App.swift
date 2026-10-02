@@ -115,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         openWindow(id: "dashboard")
-        NSApp.activate(ignoringOtherApps: true)
+        DashboardWindow.bringFront()
     }
 }
 
