@@ -105,6 +105,22 @@ enum VoiceTests {
         check(WakeWord.match("Ok Jervis quelle heure est-il ?") == .command("quelle heure est-il"), "close spelling", "\(WakeWord.match("Ok Jervis quelle heure est-il ?"))")
         check(WakeWord.match("Dis Jarvis. Stop.") == .command("Stop"), "short command")
         check(WakeWord.match("J'ai parlé à Jarvis hier") == .none, "mention is not a command")
+        for (said, expected) in [
+            ("Hello Jarvis", WakeWord.Match.alone),
+            ("Bonsoir Jarvis, ouvre Teams.", .command("ouvre Teams")),
+            ("Salut Jarvis tu peux lire mes mails ?", .command("tu peux lire mes mails")),
+            ("Excuse-moi Jarvis, c'est quoi mon agenda ?", .command("c'est quoi mon agenda")),
+            ("Good morning Jarvis!", .alone),
+            ("Quelle heure est-il, Jarvis ?", .command("Quelle heure est-il")),
+            ("Ouvre VS Code Jarvis.", .command("Ouvre VS Code")),
+            ("Alors, Jarvis, on en est où ?", .command("on en est où")),
+            ("Merci Jarvis", .alone),
+            ("C'est Jarvis qui a ouvert la PR", .none),
+            ("Je parlais de Jarvis à Paul", .none),
+            ("Demande à Jarvis", .none),
+        ] {
+            check(WakeWord.match(said) == expected, "wake: \(said)", "\(WakeWord.match(said))")
+        }
         check(WakeWord.match("Jardin fleuri ce matin") == .none, "jardin is not Jarvis")
         check(WakeWord.match("Travis est en retard") == .none, "Travis is not Jarvis")
         check(WakeWord.match("") == .none, "empty")

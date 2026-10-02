@@ -93,36 +93,77 @@ function checkRepo(repo: string): string {
 }
 
 /** GitHub REST v3 with a fine-grained token (Bearer, from the Keychain). */
+export interface GitHubOptions {
+  /** Token for an owner, or the personal one (owner undefined). Read at each call. */
+  token: (owner?: string) => string;
+  owners?: () => string[];
+  fetch?: FetchFn;
+  base?: string;
+}
+
 export class GitHubClient implements ForgeClient {
   readonly forge = 'github' as const;
   readonly gitUser = 'x-access-token';
-  readonly #token: () => string;
-  readonly #http: HttpJson;
+  readonly #o: GitHubOptions;
+  readonly #clients = new Map<string, HttpJson>();
   #login: string | null = null;
 
-  constructor(o: { token: () => string; fetch?: FetchFn; base?: string }) {
-    this.#token = o.token;
-    this.#http = new HttpJson({
-      base: o.base ?? 'https://api.github.com',
-      auth: () => ({ authorization: `Bearer ${o.token()}` }),
-      headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
-      ...(o.fetch && { fetch: o.fetch }),
-    });
+  constructor(o: GitHubOptions) {
+    this.#o = o;
+  }
+
+  /** Owners (organisations) that have their own token: fine-grained tokens cover one owner each. */
+  #owners(): string[] {
+    return (this.#o.owners?.() ?? []).map((x) => x.toLowerCase());
+  }
+
+  /** API client for an owner's token, or the default (personal) one. */
+  #api(owner?: string): HttpJson {
+    const key = owner && this.#owners().includes(owner.toLowerCase()) ? owner.toLowerCase() : '';
+    let c = this.#clients.get(key);
+    if (!c) {
+      c = new HttpJson({
+        base: this.#o.base ?? 'https://api.github.com',
+        auth: () => ({ authorization: `Bearer ${this.#o.token(key || undefined)}` }),
+        headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+        ...(this.#o.fetch && { fetch: this.#o.fetch }),
+      });
+      this.#clients.set(key, c);
+    }
+    return c;
+  }
+
+  #for(repo: string): HttpJson {
+    return this.#api(repo.split('/')[0]);
   }
 
   async whoami(): Promise<string> {
-    this.#login ??= (await this.#http.get<GhUser>('/user')).login;
+    this.#login ??= (await this.#api().get<GhUser>('/user')).login;
     return this.#login;
   }
 
+  /** Search with every token (personal + organisations), merged and newest first. */
   async #search(q: string, max: number): Promise<GhSearchItem[]> {
-    const r = await this.#http.get<{ items: GhSearchItem[] }>('/search/issues', {
-      q,
-      sort: 'updated',
-      order: 'desc',
-      per_page: Math.min(max, 100),
-    });
-    return r.items.slice(0, max);
+    const keys = ['', ...this.#owners()];
+    const pages = await Promise.all(
+      keys.map((k) =>
+        this.#api(k || undefined)
+          .get<{ items: GhSearchItem[] }>('/search/issues', {
+            q,
+            sort: 'updated',
+            order: 'desc',
+            per_page: Math.min(max, 100),
+          })
+          .then((r) => r.items)
+          .catch((e: Error) => (k ? [] : Promise.reject(e))),
+      ),
+    );
+    const seen = new Set<string>();
+    return pages
+      .flat()
+      .filter((i) => !seen.has(i.html_url) && seen.add(i.html_url))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .slice(0, max);
   }
 
   #changeFromSearch(i: GhSearchItem): ChangeRequest {
@@ -162,13 +203,13 @@ export class GitHubClient implements ForgeClient {
   ): Promise<
     Pick<ChangeRequest, 'checks' | 'approvals' | 'changesRequested' | 'source' | 'target'>
   > {
-    const pr = await this.#http.get<GhPull>(`/repos/${repo}/pulls/${number}`);
+    const pr = await this.#for(repo).get<GhPull>(`/repos/${repo}/pulls/${number}`);
     const [runs, reviews] = await Promise.all([
-      this.#http.get<{ check_runs: { status: string; conclusion: string | null }[] }>(
+      this.#for(repo).get<{ check_runs: { status: string; conclusion: string | null }[] }>(
         `/repos/${repo}/commits/${pr.head.sha}/check-runs`,
         { per_page: 100 },
       ),
-      this.#http.get<GhReview[]>(`/repos/${repo}/pulls/${number}/reviews`, { per_page: 100 }),
+      this.#for(repo).get<GhReview[]>(`/repos/${repo}/pulls/${number}/reviews`, { per_page: 100 }),
     ]);
     // Latest review per reviewer decides.
     const latest = new Map<string, string>();
@@ -214,7 +255,7 @@ export class GitHubClient implements ForgeClient {
       );
     }
     const repo = checkRepo(o.repo);
-    const pulls = await this.#http.all<GhPull>(
+    const pulls = await this.#for(repo).all<GhPull>(
       `/repos/${repo}/pulls`,
       { state: o.state, sort: 'updated', direction: 'desc', per_page: Math.min(o.max, 100) },
       o.max,
@@ -241,21 +282,21 @@ export class GitHubClient implements ForgeClient {
     o: { maxPatchChars: number },
   ): Promise<ChangeDetail> {
     checkRepo(repo);
-    const pr = await this.#http.get<GhPull>(`/repos/${repo}/pulls/${number}`);
+    const pr = await this.#for(repo).get<GhPull>(`/repos/${repo}/pulls/${number}`);
     const [files, comments, inline, status] = await Promise.all([
-      this.#http.all<GhFile>(
+      this.#for(repo).all<GhFile>(
         `/repos/${repo}/pulls/${number}/files`,
         { per_page: 100 },
         300,
         linkNext,
       ),
-      this.#http.all<GhComment>(
+      this.#for(repo).all<GhComment>(
         `/repos/${repo}/issues/${number}/comments`,
         { per_page: 100 },
         100,
         linkNext,
       ),
-      this.#http.all<GhComment>(
+      this.#for(repo).all<GhComment>(
         `/repos/${repo}/pulls/${number}/comments`,
         { per_page: 100 },
         100,
@@ -312,7 +353,7 @@ export class GitHubClient implements ForgeClient {
       );
     }
     const repo = checkRepo(o.repo);
-    const issues = await this.#http.all<GhIssue>(
+    const issues = await this.#for(repo).all<GhIssue>(
       `/repos/${repo}/issues`,
       { state: o.state, sort: 'updated', direction: 'desc', per_page: Math.min(o.max, 100) },
       o.max * 2,
@@ -338,8 +379,8 @@ export class GitHubClient implements ForgeClient {
   async getIssue(repo: string, number: number): Promise<IssueDetail> {
     checkRepo(repo);
     const [i, comments] = await Promise.all([
-      this.#http.get<GhIssue>(`/repos/${repo}/issues/${number}`),
-      this.#http.all<GhComment>(
+      this.#for(repo).get<GhIssue>(`/repos/${repo}/issues/${number}`),
+      this.#for(repo).all<GhComment>(
         `/repos/${repo}/issues/${number}/comments`,
         { per_page: 100 },
         100,
@@ -366,21 +407,24 @@ export class GitHubClient implements ForgeClient {
     };
   }
 
-  gitToken(): string {
-    return this.#token();
+  gitToken(repo: string): string {
+    const owner = repo.split('/')[0]?.toLowerCase();
+    return this.#o.token(owner && this.#owners().includes(owner) ? owner : undefined);
   }
 
   async repoInfo(repo: string): Promise<RepoInfo> {
     checkRepo(repo);
-    const r = await this.#http.get<{ default_branch: string; private: boolean; clone_url: string }>(
-      `/repos/${repo}`,
-    );
+    const r = await this.#for(repo).get<{
+      default_branch: string;
+      private: boolean;
+      clone_url: string;
+    }>(`/repos/${repo}`);
     return { defaultBranch: r.default_branch, private: r.private, cloneUrl: r.clone_url };
   }
 
   async openChange(c: NewChange): Promise<{ number: number; url: string }> {
     checkRepo(c.repo);
-    const r = await this.#http.request<{ number: number; html_url: string }>(
+    const r = await this.#for(c.repo).request<{ number: number; html_url: string }>(
       'POST',
       `/repos/${c.repo}/pulls`,
       {
@@ -405,7 +449,7 @@ export class GitHubClient implements ForgeClient {
   ): Promise<{ url: string }> {
     checkRepo(repo);
     // PR conversation comments live on the issue endpoint too.
-    const r = await this.#http.request<{ html_url: string }>(
+    const r = await this.#for(repo).request<{ html_url: string }>(
       'POST',
       `/repos/${repo}/issues/${number}/comments`,
       { body: { body } },

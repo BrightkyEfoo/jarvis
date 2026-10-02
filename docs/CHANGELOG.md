@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.13.0 — Tout connecter, appel plus naturel (02/10/2026)
+
+### Ajouté
+- **`jarvis setup`** : connecte pas à pas GitHub (perso et chaque organisation), GitLab,
+  Trello, Gmail et Agenda, le mail pro et Teams.
+  - Les pages s'ouvrent pré-remplies : token GitHub fine-grained à droits minimaux, token GitLab.
+  - Chaque token est vérifié avant d'être enregistré.
+  - Le mail pro est testé en IMAP et SMTP, puis ajouté à la politique et scellé.
+  - Jarvis est redémarré à la fin.
+- **GitHub, un token par propriétaire** : un token fine-grained ne couvre qu'un compte ou une
+  organisation. Jarvis choisit le bon token pour chaque dépôt, et pour pousser les branches des
+  workers. La boîte de réception interroge tous les tokens.
+- **Politique personnelle** dans `config/policy.yaml`, exclue de git. L'exemple du dépôt reste
+  générique.
+- **Appel plus naturel** :
+  - « Hello / Bonjour / Bonsoir / Salut / Excuse-moi… Jarvis, … » ;
+  - le nom en fin de phrase (« Quelle heure est-il, Jarvis ? ») ;
+  - le nom entre virgules (« Alors, Jarvis, … »).
+
+  Une simple mention (« c'est Jarvis qui… », « parlé à Jarvis ») est ignorée.
+- **Teams** : piloté comme les autres apps (pas d'API Microsoft nécessaire). L'envoi est
+  confirmé, sauf si `setup` l'autorise sans confirmation.
+- **Tests** : 12 tests Swift (variantes d'appel), 3 tests TS (liens d'installation, un token
+  par propriétaire).
+
 ## 0.12.0 — Mains libres, signature stable (02/10/2026)
 
 ### Ajouté (suite)

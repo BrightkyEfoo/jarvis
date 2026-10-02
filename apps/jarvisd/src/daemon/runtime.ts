@@ -192,8 +192,24 @@ function buildForges(policy: Policy, secrets: SecretStore, redactor: Redactor) {
   };
   // Re-read at each call: `jarvis github connect` takes effect without restarting the daemon.
   const live = (name: string) => () => secrets.get(name) ?? '';
-  if (secret(SecretName.githubToken))
-    forges.set('github', new GitHubClient({ token: live(SecretName.githubToken) }));
+  const githubOwners = (): string[] => {
+    try {
+      return JSON.parse(secrets.get(SecretName.githubOwners) ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  };
+  for (const o of githubOwners()) secret(SecretName.githubOwnerToken(o));
+  if (secret(SecretName.githubToken)) {
+    forges.set(
+      'github',
+      new GitHubClient({
+        token: (owner) =>
+          secrets.get(owner ? SecretName.githubOwnerToken(owner) : SecretName.githubToken) ?? '',
+        owners: githubOwners,
+      }),
+    );
+  }
   if (secret(SecretName.gitlabToken)) {
     forges.set(
       'gitlab',

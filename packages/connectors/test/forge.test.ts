@@ -195,6 +195,49 @@ describe('GitHub', () => {
   });
 });
 
+describe('GitHub with one token per owner', () => {
+  it('uses the organisation token for its repos and searches with every token', async () => {
+    const { fn, calls } = fakeFetch({
+      'GET /search/issues': (u: URL) => ({ items: [] as unknown[], q: u.searchParams.get('q') }),
+      'POST /repos/scriptify-cm/site/issues/3/comments': {
+        html_url: 'https://github.com/scriptify-cm/site/pull/3#c',
+      },
+      'POST /repos/brightkyefoo/jarvis/issues/1/comments': {
+        html_url: 'https://github.com/BrightkyEfoo/jarvis/pull/1#c',
+      },
+    });
+    const tokens: Record<string, string> = { '': 'PERSONAL', 'scriptify-cm': 'ORG' };
+    const gh = new GitHubClient({
+      token: (o) => tokens[o ?? ''] ?? '',
+      owners: () => ['Scriptify-CM'],
+      fetch: fn,
+    });
+    await gh.comment('scriptify-cm/site', 3, 'change', 'ok');
+    await gh.comment('brightkyefoo/jarvis', 1, 'change', 'ok');
+    const auth = (path: string) => calls.find((c) => c.url.includes(path))?.headers.authorization;
+    expect(auth('/repos/scriptify-cm/')).toBe('Bearer ORG');
+    expect(auth('/repos/brightkyefoo/')).toBe('Bearer PERSONAL');
+    expect(gh.gitToken('Scriptify-CM/site')).toBe('ORG');
+    expect(gh.gitToken('BrightkyEfoo/jarvis')).toBe('PERSONAL');
+    calls.length = 0;
+    await gh.inbox(5);
+    // 3 searches × 2 tokens.
+    expect(
+      calls
+        .filter((c) => c.url.includes('/search/issues'))
+        .map((c) => c.headers.authorization)
+        .sort(),
+    ).toEqual([
+      'Bearer ORG',
+      'Bearer ORG',
+      'Bearer ORG',
+      'Bearer PERSONAL',
+      'Bearer PERSONAL',
+      'Bearer PERSONAL',
+    ]);
+  });
+});
+
 describe('GitLab', () => {
   const mr = (iid: number, extra: object = {}) => ({
     iid,

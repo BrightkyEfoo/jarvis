@@ -11,6 +11,9 @@ export const SecretName = {
   mailPassword: (account: string) => `mail.${account}.password`,
   /** Fine-grained personal access token (no admin rights). */
   githubToken: 'github.token',
+  /** Fine-grained tokens cover one owner: one per organisation, plus the list of those owners. */
+  githubOwnerToken: (owner: string) => `github.token.${owner.toLowerCase()}`,
+  githubOwners: 'github.owners',
   gitlabToken: 'gitlab.token',
   trelloKey: 'trello.key',
   trelloToken: 'trello.token',

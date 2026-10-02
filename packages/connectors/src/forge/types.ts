@@ -114,8 +114,8 @@ export interface ForgeClient {
   openChange(c: NewChange): Promise<{ number: number; url: string }>;
   /** Username git presents over https with the token (x-access-token, oauth2). */
   readonly gitUser: string;
-  /** The token, for git only (credential helper), read at use time. */
-  gitToken(): string;
+  /** The token for this repository (git credential helper only), read at use time. */
+  gitToken(repo: string): string;
 }
 
 /** owner/repo, or group/subgroup/project for GitLab. No "." / ".." segment (path traversal). */

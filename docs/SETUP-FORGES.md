@@ -1,5 +1,8 @@
 # Connecter GitHub, GitLab et Trello
 
+> Le plus simple : `jarvis setup`. Il ouvre chaque page pré-remplie et vérifie chaque token.
+> Ce qui suit détaille ce qu'il fait.
+
 Les tokens vont dans le Trousseau macOS. Ils ne passent jamais par le modèle ni par le socket du
 daemon. Après chaque connexion, redémarre le daemon (`jarvis service install` le relance, ou
 `jarvis daemon`).
@@ -8,8 +11,9 @@ daemon. Après chaque connexion, redémarre le daemon (`jarvis service install` 
 
 1. Va sur github.com › Settings › Developer settings › **Fine-grained tokens** › Generate new
    token.
-2. Choisis le **propriétaire** : ton compte. Pour les organisations (`scriptify-cm`,
-   `javascriptcm`), crée un token par organisation, ou demande l'accès si elles l'exigent.
+2. Choisis le **propriétaire** : ton compte. Un token fine-grained ne couvre qu'un
+   propriétaire : crée **un token par organisation** (`scriptify-cm`, `javascriptcm`).
+   `jarvis setup` les demande l'un après l'autre et Jarvis choisit le bon pour chaque dépôt.
 3. **Repository access** : *All repositories*.
 4. **Permissions** du dépôt :
 

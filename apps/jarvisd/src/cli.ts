@@ -531,6 +531,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis google connect <client.json> [compte]  connecter Gmail + Agenda (OAuth)
   jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
   jarvis workers               tâches des workers Claude Code (en file, en cours, PR ouvertes)
+  jarvis setup                 connecter tous les comptes, pas à pas (GitHub, GitLab, Trello, Gmail, mail pro, Teams)
   jarvis github connect        token GitHub fine-grained → Trousseau
   jarvis gitlab connect [url]  token GitLab → Trousseau
   jarvis trello connect        clé + token Trello → Trousseau
@@ -767,6 +768,11 @@ async function main(argv: string[]): Promise<void> {
           );
         }
       });
+    case 'setup':
+    case 'connect': {
+      const { runSetup } = await import('./setup.ts');
+      return runSetup({ askHidden, askLine, say: (x) => console.log(x) });
+    }
     case 'github':
     case 'gitlab':
     case 'trello':

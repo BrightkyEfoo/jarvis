@@ -225,7 +225,7 @@ export class FakeForge implements ForgeClient {
   readonly opened: NewChange[] = [];
   /** Local bare repositories standing in for GitHub (repo → path). */
   readonly remotes = new Map<string, string>();
-  gitToken() {
+  gitToken(_repo: string) {
     return '';
   }
   async repoInfo(repo: string) {

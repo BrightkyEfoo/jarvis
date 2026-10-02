@@ -18,3 +18,5 @@ apps/mac/build/
 apps/mac/.build/
 apps/mac/.swiftpm/
 apps/mac/Package.resolved
+# Brightky's own sealed policy (accounts, hosts): never in git
+config/policy.yaml

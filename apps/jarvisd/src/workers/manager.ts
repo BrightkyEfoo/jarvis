@@ -231,7 +231,7 @@ export class WorkerManager {
       if (!forge) throw new Error(`${task.forge} n'est plus connecté`);
       const info = await forge.repoInfo(task.repo);
       const base = task.base ?? info.defaultBranch;
-      const token = forge.gitToken();
+      const token = forge.gitToken(task.repo);
       auth = token ? { user: forge.gitUser, token } : undefined;
 
       // 1. Jarvis's own partial clone (never Brightky's working copies), then a fresh worktree.

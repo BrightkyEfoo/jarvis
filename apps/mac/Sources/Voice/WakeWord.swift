@@ -1,8 +1,12 @@
 import Foundation
 
-/// Does an utterance address Jarvis? "Jarvis, ouvre VS Code" → command; "Hey Jarvis" → wake only.
-/// Speech recognition writes the name a few ways (Jervis, Javis, Charvis…): close spellings count,
-/// but only as one of the first words, so a sentence merely mentioning Jarvis is not a command.
+/// Does an utterance address Jarvis? Speech recognition writes the name a few ways (Jervis, Javis,
+/// Charvis…), close spellings count. Jarvis is addressed when the name is:
+/// - at the start, after any greeting or filler ("Hello Jarvis", "Bonsoir Jarvis, …",
+///   "Excuse-moi Jarvis, …", "OK Google… non, Jarvis"),
+/// - or at the end ("Quelle heure est-il, Jarvis ?"),
+/// - or set apart by commas ("Alors, Jarvis, on en est où ?").
+/// A mere mention ("j'ai parlé à Jarvis hier", "c'est Jarvis qui…") is not a command.
 enum WakeWord {
     enum Match: Equatable {
         case none
@@ -10,7 +14,20 @@ enum WakeWord {
         case command(String)
     }
 
-    private static let fillers: Set<String> = ["hey", "he", "hé", "eh", "ok", "okay", "dis", "salut", "bonjour", "allo", "allô", "yo", "oh", "hi", "hello", "et", "alors"]
+    /// Greetings, politeness and fillers that may come before the name (normalised, no accents).
+    private static let lead: Set<String> = [
+        "hey", "he", "eh", "hi", "hello", "hallo", "hola", "yo", "oh", "ok", "okay", "dis", "dites", "salut", "bonjour",
+        "bonsoir", "coucou", "allo", "alors", "et", "euh", "heu", "bon", "bah", "ben", "ecoute", "ecoutemoi", "excuse",
+        "excusemoi", "excusez", "pardon", "please", "stp", "svp", "good", "morning", "evening", "afternoon", "night",
+        "wake", "up", "debout", "reveilletoi", "ca", "va", "mon", "cher", "mister", "monsieur", "my", "dear", "merci",
+        "thanks", "thank", "you", "aussi", "toi", "et", "voila", "bien", "sur", "oui", "non", "attends", "wait",
+    ]
+    /// Words that make the name an object, not someone spoken to ("parlé à Jarvis", "c'est Jarvis").
+    private static let mention: Set<String> = [
+        "a", "au", "aux", "de", "du", "des", "le", "la", "les", "l", "un", "une", "avec", "pour", "sur", "chez", "par",
+        "sans", "vers", "est", "cest", "etait", "appelle", "nomme", "to", "with", "about", "the", "of", "for", "from",
+        "is", "was", "called", "named", "ask", "tell", "que", "qui", "dont",
+    ]
     private static let spellings: Set<String> = ["jarvis", "jarvice", "jervis", "jarviss", "jarvisse", "javis", "jarvi", "djarvis", "charvis", "harvis", "garvis", "jarvise"]
 
     static func normalize(_ word: String) -> String {
@@ -23,14 +40,33 @@ enum WakeWord {
         return spellings.contains(w) || (w.count >= 5 && w.count <= 7 && distance(w, "jarvis") <= 1)
     }
 
+    private static let edge = CharacterSet(charactersIn: " ,.;:!?-–—…\"'«»").union(.whitespaces)
+
     static func match(_ text: String) -> Match {
         let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        var i = 0
-        while i < min(words.count, 3), fillers.contains(normalize(words[i])) { i += 1 }
-        guard i < words.count, isName(words[i]) else { return .none }
-        let rest = words[(i + 1)...].joined(separator: " ")
-            .trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:!?-–—…").union(.whitespaces))
-        return rest.contains(where: { $0.isLetter }) ? .command(rest) : .alone
+        guard let i = words.firstIndex(where: isName) else { return .none }
+        let before = Array(words[..<i]), after = Array(words[(i + 1)...])
+        let prev = before.last.map(normalize)
+        let clean = { (ws: [String]) in ws.joined(separator: " ").trimmingCharacters(in: edge) }
+        let hasWords = { (s: String) in s.contains(where: { $0.isLetter }) }
+
+        // 1. Name opening the sentence, after greetings only: "Hello Jarvis, ouvre Teams".
+        if before.allSatisfy({ lead.contains(normalize($0)) || normalize($0).isEmpty }) {
+            let rest = clean(after)
+            return hasWords(rest) ? .command(rest) : .alone
+        }
+        if let prev, mention.contains(prev) { return .none }
+        // 2. Name closing the sentence: "Quelle heure est-il, Jarvis ?".
+        if !hasWords(clean(after)) {
+            let rest = clean(before)
+            return hasWords(rest) ? .command(rest) : .alone
+        }
+        // 3. Name between commas: "Alors, Jarvis, on en est où ?".
+        if before.last?.hasSuffix(",") == true, words[i].hasSuffix(",") {
+            let rest = clean(before.filter { !lead.contains(normalize($0)) } + after)
+            return hasWords(rest) ? .command(rest) : .alone
+        }
+        return .none
     }
 
     /// Is what the microphone heard just Jarvis's own voice (room echo after it spoke)?

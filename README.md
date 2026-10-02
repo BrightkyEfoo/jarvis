@@ -46,10 +46,11 @@ jarvis pin set
 # 3. Gmail + Agenda : suis docs/SETUP-GOOGLE.md, puis
 jarvis google connect ~/Downloads/client_secret_XXXX.json perso
 
-# 4. GitHub, GitLab, Trello : suis docs/SETUP-FORGES.md, puis
-jarvis github connect && jarvis trello connect
+# 4. Tous tes comptes (GitHub, GitLab, Trello, Gmail, mail pro, Teams), pas à pas :
+jarvis setup
 
-# 5. Politique : relis config/policy.example.yaml, puis scelle-la
+# 5. Politique : relis config/policy.example.yaml, puis scelle-la (setup écrit ensuite
+#    ta version perso dans config/policy.yaml, hors git, et la re-scelle lui-même)
 ops/scripts/seal-policy.sh config/policy.example.yaml   # demande sudo pour la copie root
 ```
 

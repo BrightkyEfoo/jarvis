@@ -318,7 +318,7 @@ export class GitLabClient implements ForgeClient {
     };
   }
 
-  gitToken(): string {
+  gitToken(_repo: string): string {
     return this.#token();
   }
 
