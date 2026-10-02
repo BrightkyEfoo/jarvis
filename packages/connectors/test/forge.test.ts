@@ -3,6 +3,7 @@ import { GitHubClient } from '../src/forge/github.ts';
 import { GitLabClient } from '../src/forge/gitlab.ts';
 import { TrelloClient } from '../src/forge/trello.ts';
 import { budgetPatches } from '../src/forge/types.ts';
+import { MergedCalendar } from '../src/google/calendar.ts';
 
 interface Call {
   method: string;
@@ -423,5 +424,46 @@ describe('diff budget', () => {
     expect(out[0]?.patch).toContain('tronqué');
     expect(out[2]?.patch).toBeUndefined();
     expect(out.map((f) => f.path)).toEqual(['big', 'small', 'binary']);
+  });
+});
+
+describe('MergedCalendar', () => {
+  const ev = (title: string, start: string) => ({
+    id: title,
+    title,
+    start,
+    end: start,
+    allDay: false,
+    attendees: 0,
+    hasVideoLink: false,
+  });
+  it('merges accounts, sorted, a shared meeting once; one failing account does not hide the others', async () => {
+    const cal = new MergedCalendar([
+      {
+        events: async () => [
+          ev('Démo client', '2026-10-02T15:00:00Z'),
+          ev('Sport', '2026-10-02T07:00:00Z'),
+        ],
+      },
+      {
+        events: async () => [
+          ev('Démo client', '2026-10-02T15:00:00Z'),
+          ev('Revue', '2026-10-02T10:00:00Z'),
+        ],
+      },
+      { events: async () => Promise.reject(new Error('token expiré')) },
+    ]);
+    expect((await cal.events(new Date(), new Date(), 10)).map((e) => e.title)).toEqual([
+      'Sport',
+      'Revue',
+      'Démo client',
+    ]);
+    await expect(
+      new MergedCalendar([{ events: async () => Promise.reject(new Error('down')) }]).events(
+        new Date(),
+        new Date(),
+        5,
+      ),
+    ).rejects.toThrow('down');
   });
 });

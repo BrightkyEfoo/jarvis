@@ -168,4 +168,6 @@ mail:
   triage_max: 25
 
 calendar:
-  google_account: perso
+  # Unset: the calendars of every connected Gmail account are merged. Set an account id to pin one.
+  # google_account: perso
+  {}

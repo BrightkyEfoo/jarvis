@@ -14,6 +14,7 @@ import {
   type GoogleClient,
   ImapProvider,
   type MailProvider,
+  MergedCalendar,
   TrelloClient,
 } from '@jarvis/connectors';
 import { Memory } from '@jarvis/memory';
@@ -176,10 +177,19 @@ function buildConnectors(policy: Policy, secrets: SecretStore, redactor: Redacto
       }
     }
   }
-  const calId =
-    policy.calendar.google_account ?? policy.mail.accounts.find((a) => a.type === 'gmail')?.id;
-  const calAuth = calId ? auths.get(calId) : undefined;
-  return { providers, calendar: calAuth ? new GoogleCalendar(calAuth) : null, status };
+  // One pinned account, or every connected Gmail account's calendar merged.
+  const pinned = policy.calendar.google_account;
+  const calAuths = pinned
+    ? [auths.get(pinned)].filter((a) => a !== undefined)
+    : [...auths.values()];
+  const calendars = calAuths.map((a) => new GoogleCalendar(a));
+  const calendar =
+    calendars.length === 0
+      ? null
+      : calendars.length === 1
+        ? (calendars[0] ?? null)
+        : new MergedCalendar(calendars);
+  return { providers, calendar, status };
 }
 
 /** GitHub / GitLab / Trello clients for the tokens present in the Keychain. */

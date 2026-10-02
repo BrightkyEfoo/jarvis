@@ -17,6 +17,32 @@ interface GEvent {
   conferenceData?: unknown;
 }
 
+/** Several Google calendars (one per connected account) read as one, sorted by start. */
+export class MergedCalendar implements CalendarProvider {
+  readonly #parts: CalendarProvider[];
+
+  constructor(parts: CalendarProvider[]) {
+    this.#parts = parts;
+  }
+
+  async events(from: Date, to: Date, max: number): Promise<CalendarEvent[]> {
+    const all = await Promise.allSettled(this.#parts.map((p) => p.events(from, to, max)));
+    const ok = all.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+    if (ok.length === 0 && all.every((r) => r.status === 'rejected')) {
+      throw (all[0] as PromiseRejectedResult).reason;
+    }
+    const seen = new Set<string>();
+    return ok
+      .filter((e) => {
+        // The same meeting shared between two of Brightky's accounts appears once.
+        const key = `${e.title}|${e.start}`;
+        return !seen.has(key) && seen.add(key) !== undefined;
+      })
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .slice(0, max);
+  }
+}
+
 export class GoogleCalendar implements CalendarProvider {
   readonly #auth: GoogleAuth;
 

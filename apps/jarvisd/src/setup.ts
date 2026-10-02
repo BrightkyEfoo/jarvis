@@ -9,7 +9,16 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { GitHubClient, GitLabClient, ImapProvider, TrelloClient } from '@jarvis/connectors';
+import {
+  connectGoogle,
+  GitHubClient,
+  GitLabClient,
+  GoogleAuth,
+  type GoogleClient,
+  ImapProvider,
+  parseClientFile,
+  TrelloClient,
+} from '@jarvis/connectors';
 import { KeychainStore, SecretName } from '@jarvis/secrets';
 import { parseDocument } from 'yaml';
 
@@ -47,6 +56,79 @@ export function githubTokenUrl(owner?: string): string {
 
 export const gitlabTokenUrl = (base: string) =>
   `${base.replace(/\/+$/, '')}/-/user_settings/personal_access_tokens?name=Jarvis&scopes=api,read_user`;
+
+/** Mail accounts declared in the personal policy (or the example when there is none yet). */
+function declaredAccounts(): { id: string; type: string; email: string }[] {
+  const file = existsSync(PERSONAL_POLICY) ? PERSONAL_POLICY : EXAMPLE;
+  const doc = parseDocument(readFileSync(file, 'utf8'));
+  return ((doc.getIn(['mail', 'accounts']) as { toJSON?: () => unknown } | undefined)?.toJSON?.() ??
+    []) as {
+    id: string;
+    type: string;
+    email: string;
+  }[];
+}
+
+/** Account id from an address: brightefoo@gmail.com → brightefoo. */
+export function accountIdFor(email: string, taken: string[]): string {
+  const base =
+    (email.split('@')[0] ?? 'gmail')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'gmail';
+  let id = base;
+  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+/**
+ * Connects one Gmail account (any number of them): Google lets Brightky pick the account, Jarvis
+ * reads which address was authorised, stores its token and declares it in the policy if needed.
+ */
+export async function connectGmail(io: SetupIO, clientFile?: string): Promise<string | null> {
+  const store = new KeychainStore();
+  let client: GoogleClient;
+  if (clientFile) client = parseClientFile(readFileSync(clientFile, 'utf8'));
+  else {
+    const saved = store.get(SecretName.googleClient);
+    if (!saved) {
+      io.say(
+        '✖ aucun client Google enregistré : passe le fichier client_secret_….json la première fois.',
+      );
+      return null;
+    }
+    client = JSON.parse(saved) as GoogleClient;
+  }
+  io.say('Le navigateur s’ouvre : choisis le compte Gmail à connecter, puis autorise les 3 accès.');
+  const r = await connectGoogle({ client, openUrl: async (url) => void open(url) });
+  const auth = new GoogleAuth({ client, refreshToken: r.refreshToken });
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+    headers: { authorization: `Bearer ${await auth.accessToken()}` },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`Gmail a refusé la lecture du profil (${res.status})`);
+  const email = ((await res.json()) as { emailAddress: string }).emailAddress.toLowerCase();
+  const accounts = declaredAccounts();
+  const existing = accounts.find((a) => a.type === 'gmail' && a.email.toLowerCase() === email);
+  const id =
+    existing?.id ??
+    accountIdFor(
+      email,
+      accounts.map((a) => a.id),
+    );
+  store.set(SecretName.googleClient, JSON.stringify(client));
+  store.set(SecretName.googleRefreshToken(id), r.refreshToken);
+  io.say(`✔ ${email} connecté (compte « ${id} »).`);
+  if (!existing) {
+    io.say(`Ajout de ${email} à ta politique…`);
+    const sealed = editPolicy(io, (d) => {
+      const list = declaredAccounts().filter((a) => a.id !== id);
+      d.setIn(['mail', 'accounts'], [...list, { id, type: 'gmail', email }]);
+    });
+    if (!sealed) io.say('✖ scellement annulé : relance « jarvis google connect » pour finir.');
+  }
+  return email;
+}
 
 /** Reads, edits and re-seals the personal policy (sudo is asked by the seal script). */
 function editPolicy(io: SetupIO, change: (doc: ReturnType<typeof parseDocument>) => void): boolean {
@@ -223,15 +305,22 @@ export async function runSetup(io: SetupIO): Promise<void> {
         '✖ aucun client_secret_….json dans Téléchargements : relance « jarvis setup » plus tard.',
       );
     else {
-      io.say(
-        `Fichier trouvé : ${newest}. Autorise Jarvis dans le navigateur (lecture, brouillons, agenda).`,
-      );
-      const r = spawnSync(
-        process.execPath,
-        [join(REPO, 'apps', 'jarvisd', 'src', 'cli.ts'), 'google', 'connect', newest, 'perso'],
-        { stdio: 'inherit' },
-      );
-      if (r.status === 0) changed = true;
+      io.say(`Fichier trouvé : ${newest}.`);
+      try {
+        if (await connectGmail(io, newest)) changed = true;
+      } catch (e) {
+        io.say(`✖ ${(e as Error).message}`);
+      }
+    }
+  }
+  // Several personal Gmail accounts: one more connection per account, same Google client.
+  while (has(SecretName.googleClient)) {
+    const more = await io.askLine('\nConnecter un autre compte Gmail ? [o/N] ');
+    if (!/^(o|oui|y|yes)$/i.test(more.trim())) break;
+    try {
+      if (await connectGmail(io)) changed = true;
+    } catch (e) {
+      io.say(`✖ ${(e as Error).message}`);
     }
   }
 

@@ -3,7 +3,7 @@ export { GitLabClient } from './forge/gitlab.ts';
 export { HttpError } from './forge/http.ts';
 export * from './forge/trello.ts';
 export * from './forge/types.ts';
-export { GoogleCalendar } from './google/calendar.ts';
+export { GoogleCalendar, MergedCalendar } from './google/calendar.ts';
 export { extractText, GmailProvider } from './google/gmail.ts';
 export {
   connectGoogle,

@@ -2,6 +2,14 @@
 
 ## 0.13.0 — Tout connecter, appel plus naturel (02/10/2026)
 
+### Ajouté (suite)
+- **Plusieurs comptes Gmail perso** :
+  - `jarvis google connect` laisse choisir le compte et détecte l'adresse autorisée ;
+  - il ajoute le compte à la politique et la re-scelle ;
+  - on peut le relancer pour chaque compte, et `jarvis setup` propose « un autre compte Gmail ».
+- **Agenda** : les agendas de tous les comptes connectés sont fusionnés. Une réunion partagée
+  entre deux comptes n'apparaît qu'une fois, et un compte en panne ne masque pas les autres.
+
 ### Ajouté
 - **`jarvis setup`** : connecte pas à pas GitHub (perso et chaque organisation), GitLab,
   Trello, Gmail et Agenda, le mail pro et Teams.

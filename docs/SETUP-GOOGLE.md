@@ -25,12 +25,22 @@ Menu **Google Auth Platform**, ou « OAuth consent screen » :
 1. Type **Desktop app**, nom `Jarvis CLI`.
 2. Télécharge le fichier JSON (`client_secret_….json`).
 
-## 5. Connecter Jarvis
+## 5. Connecter Jarvis (un ou plusieurs comptes Gmail)
 ```bash
-jarvis google connect ~/Downloads/client_secret_XXXX.json perso
-jarvis daemon            # redémarre le daemon (ou : jarvis service install)
-jarvis mail test         # vérifie l'accès
+jarvis google connect ~/Downloads/client_secret_XXXX.json   # 1er compte (le fichier une seule fois)
+jarvis google connect                                        # chaque compte Gmail en plus
+jarvis service install --app                                 # redémarre Jarvis
+jarvis mail test                                             # vérifie l'accès
 ```
+
+À chaque connexion, Google te laisse **choisir le compte**. Jarvis lit l'adresse autorisée,
+l'ajoute à ta politique (`config/policy.yaml`, re-scellée avec ton mot de passe Mac) et lui donne
+un identifiant tiré de l'adresse (`brightefoo@gmail.com` → `brightefoo`). Les agendas de tous
+les comptes sont fusionnés dans le briefing, sauf si tu en épingles un avec
+`calendar.google_account`.
+
+Tant que l'app Google est en mode « Test », chaque adresse doit figurer dans **Audience →
+Utilisateurs test**.
 
 Le navigateur s'ouvre. Accepte trois autorisations :
 - **lecture** des mails ;

@@ -196,7 +196,8 @@ export async function connectGoogle(opts: {
         code_challenge: challenge,
         code_challenge_method: 'S256',
         access_type: 'offline',
-        prompt: 'consent',
+        // select_account: each connection may be a different Gmail (several personal accounts).
+        prompt: 'consent select_account',
         state,
       }).toString();
       opts.openUrl(url.toString()).catch(reject);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { githubTokenUrl, gitlabTokenUrl } from '../src/setup.ts';
+import { accountIdFor, githubTokenUrl, gitlabTokenUrl } from '../src/setup.ts';
 
 describe('setup links', () => {
   it('GitHub fine-grained token template: least privilege, one owner per token', () => {
@@ -22,5 +22,13 @@ describe('setup links', () => {
     expect(gitlabTokenUrl('https://gitlab.example.cm/')).toBe(
       'https://gitlab.example.cm/-/user_settings/personal_access_tokens?name=Jarvis&scopes=api,read_user',
     );
+  });
+});
+
+describe('several Gmail accounts', () => {
+  it('derives a stable, unique account id from the address', () => {
+    expect(accountIdFor('BrightEfoo@gmail.com', ['perso'])).toBe('brightefoo');
+    expect(accountIdFor('brightefoo@gmail.com', ['perso', 'brightefoo'])).toBe('brightefoo-2');
+    expect(accountIdFor('jean.paul+pro@gmail.com', [])).toBe('jean-paul-pro');
   });
 });

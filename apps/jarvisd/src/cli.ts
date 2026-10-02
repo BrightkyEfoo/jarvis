@@ -332,27 +332,18 @@ async function serviceCommand(args: string[]): Promise<void> {
 
 /** OAuth in the browser; the refresh token goes straight to the Keychain, never to the screen. */
 async function googleCommand(args: string[]): Promise<void> {
-  const [sub, file, account = 'perso'] = args;
-  if (sub !== 'connect' || !file) {
-    console.log('usage: jarvis google connect <client_secret.json> [account-id]');
+  const [sub, file] = args;
+  if (sub !== 'connect') {
+    console.log(
+      'usage: jarvis google connect [client_secret.json]   (le fichier la première fois seulement ; relance pour chaque compte Gmail)',
+    );
     return;
   }
-  const { readFileSync } = await import('node:fs');
-  const { execFile } = await import('node:child_process');
-  const { connectGoogle, parseClientFile } = await import('@jarvis/connectors');
-  const { KeychainStore, SecretName } = await import('@jarvis/secrets');
-  const client = parseClientFile(readFileSync(file, 'utf8'));
-  const store = new KeychainStore();
-  console.log(
-    'Ouverture du navigateur pour autoriser Jarvis (lecture des mails, brouillons, lecture de l’agenda)…',
-  );
-  let r: Awaited<ReturnType<typeof connectGoogle>>;
+  const { connectGmail } = await import('./setup.ts');
   try {
-    r = await connectGoogle({
-      client,
-      openUrl: (url) =>
-        new Promise((ok, ko) => execFile('/usr/bin/open', [url], (e) => (e ? ko(e) : ok()))),
-    });
+    const email = await connectGmail({ askHidden, askLine, say: (x) => console.log(x) }, file);
+    if (!email) process.exitCode = 1;
+    else console.log(dim('Redémarre Jarvis pour l’utiliser : jarvis service install --app'));
   } catch (e) {
     const msg = (e as Error).message;
     console.error(red(`✖ Google a refusé : ${msg}`));
@@ -360,24 +351,13 @@ async function googleCommand(args: string[]): Promise<void> {
     if (/access_denied|no answer from the browser/.test(msg)) {
       console.error(
         [
-          'Si Google a affiché « Erreur 403 : access_denied » : ton app est en mode « Test » et ce compte n’est pas testeur. Au choix :',
-          '  • https://console.cloud.google.com/auth/audience → « Publish app » (recommandé : sinon les tokens expirent après 7 jours)',
-          '  • ou, sur la même page, « Test users » → ajoute l’adresse avec laquelle tu te connectes',
-          'Puis relance la même commande.',
+          'Si Google a affiché « Erreur 403 : access_denied » : l’app est en mode « Test » et ce compte n’est pas testeur.',
+          '  → https://console.cloud.google.com/auth/audience → « Utilisateurs test » → ajoute l’adresse, puis relance.',
         ].join('\n'),
       );
     }
     process.exitCode = 1;
-    return;
   }
-  store.set(SecretName.googleClient, JSON.stringify(client));
-  store.set(SecretName.googleRefreshToken(account), r.refreshToken);
-  console.log(
-    `✔ compte « ${account} » connecté (${r.scope.split(' ').length} autorisations). Redémarre le daemon.`,
-  );
-  console.log(
-    dim('  Tu peux supprimer le fichier client_secret : il est maintenant dans le Trousseau.'),
-  );
 }
 
 async function mailCommand(args: string[]): Promise<void> {
