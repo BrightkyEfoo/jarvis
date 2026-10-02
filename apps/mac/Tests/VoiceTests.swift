@@ -99,6 +99,16 @@ enum VoiceTests {
                 == "Prendre jusqu'à 5 cartes Trello « jarvis » : un worker par carte, carte en cours puis lien de la PR et carte à relire", "trello take fr")
         check(Wording.fr("Start a worker on acme/app: Ajoute le mode sombre") == "Lancer un worker sur acme/app : Ajoute le mode sombre", "worker fr")
 
+        // Hands-free: the name must come first (after an optional "hey/ok/dis").
+        check(WakeWord.match("Jarvis, ouvre VS Code sur CodeVault.") == .command("ouvre VS Code sur CodeVault"), "wake + command")
+        check(WakeWord.match("Hey Jarvis") == .alone, "wake alone")
+        check(WakeWord.match("Ok Jervis quelle heure est-il ?") == .command("quelle heure est-il"), "close spelling", "\(WakeWord.match("Ok Jervis quelle heure est-il ?"))")
+        check(WakeWord.match("Dis Jarvis. Stop.") == .command("Stop"), "short command")
+        check(WakeWord.match("J'ai parlé à Jarvis hier") == .none, "mention is not a command")
+        check(WakeWord.match("Jardin fleuri ce matin") == .none, "jardin is not Jarvis")
+        check(WakeWord.match("Travis est en retard") == .none, "Travis is not Jarvis")
+        check(WakeWord.match("") == .none, "empty")
+
         // Computer control guard, independent of the daemon.
         for url in ["https://www.paypal.com/x", "https://ebanking.ecobank.com", "https://www.afrilandfirstbank.com", "https://github.com/settings/tokens",
                     "https://accounts.google.com/"] {

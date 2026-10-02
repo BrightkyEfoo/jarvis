@@ -11,6 +11,8 @@ struct VoiceConfig {
     var rate: Float = 0.52
     /// "neural" (Parakeet + PocketTTS, once the models are on disk) or "system" (Apple).
     var engine = "neural"
+    /// Hands-free: say "Jarvis, …" (microphone open, everything local).
+    var wake = true
     var frNeural = VoiceCatalog.defaults["fr"] ?? "henri"
     var enNeural = VoiceCatalog.defaults["en"] ?? "charles"
     var keyCode = UInt32(kVK_Space)
@@ -26,6 +28,7 @@ struct VoiceConfig {
         let path = Self.root + "/voice.json"
         var json = (FileManager.default.contents(atPath: path).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
         json["engine"] = engine
+        json["wake"] = wake
         json["frNeural"] = frNeural
         json["enNeural"] = enNeural
         guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) else { return }
@@ -44,6 +47,7 @@ struct VoiceConfig {
         if let v = json["enVoice"] as? String { c.enVoice = v }
         if let v = json["rate"] as? Double { c.rate = Float(min(max(v, 0.3), 0.7)) }
         if let v = json["engine"] as? String, ["neural", "system"].contains(v) { c.engine = v }
+        if let v = json["wake"] as? Bool { c.wake = v }
         if let v = json["frNeural"] as? String { c.frNeural = v }
         if let v = json["enNeural"] as? String { c.enNeural = v }
         if let v = json["hotkey"] as? String, let (mods, label) = parseModifiers(v) {

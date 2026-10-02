@@ -83,6 +83,37 @@ enum VoiceLab {
         }
     }
 
+    /// `--wake-test <audio…>`: runs clips through the hands-free pipeline (VAD → Parakeet → wake word).
+    static func wakeTest(_ files: [String]) {
+        Task.detached {
+            do {
+                let asr = AsrManager(config: .default)
+                try await asr.loadModels(try await AsrModels.downloadAndLoad(version: .v3))
+                let w = try await WakeWatcher.make(asr: asr)
+                w.onCommand = { text, lang in print("  → commande [\(lang)] « \(text) »") }
+                w.onArmed = { print("  → réveillé (« Jarvis » seul)") }
+                w.onHeard = { text, _ in print("    entendu : \(text)") }
+                for f in files {
+                    print("▶ \((f as NSString).lastPathComponent)")
+                    let samples = try AudioConverter().resampleAudioFile(URL(fileURLWithPath: f))
+                    let silence = [Float](repeating: 0, count: 16_000)
+                    let all = silence + samples + silence + silence
+                    var i = 0
+                    while i < all.count {
+                        w.feed(Array(all[i..<min(i + 1600, all.count)]))
+                        i += 1600
+                    }
+                    w.drain()
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                }
+                exit(0)
+            } catch {
+                print("✖ \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+    }
+
     /// `--voice-screen <wav…>`: language and transcript of each clip (to find French speakers).
     static func screen(_ files: [String]) {
         Task.detached {

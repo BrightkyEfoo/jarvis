@@ -19,8 +19,15 @@ final class Controller {
     private let client: JarvisClient
     private var hotKey: HotKey?
     private var state = State.idle {
-        didSet { if state != oldValue { onState(state.rawValue) } }
+        didSet {
+            guard state != oldValue else { return }
+            onState(state.rawValue)
+            updateWake()
+            if state == .idle { DispatchQueue.main.async { self.adoptNeuralIfIdle() } }
+        }
     }
+    /// Hands-free "Jarvis, …" (neural engine only).
+    private var wake: WakeWatcher?
     private var chunker = SpeechChunker()
     private var currentAsk: String?
     private var lang = "fr"
@@ -108,6 +115,54 @@ final class Controller {
         listener = NeuralListener(asr: stack.asr)
         wire()
         print("🧠 voix neuronales actives : \(speaker.voiceNames)")
+        if config.wake { startWake(stack) }
+    }
+
+    private func startWake(_ stack: NeuralStack) {
+        Task.detached {
+            do {
+                let w = try await WakeWatcher.make(asr: stack.asr)
+                await MainActor.run {
+                    w.onCommand = { [weak self] text, lang in
+                        print("👂 [\(lang)] \(text)")
+                        self?.heardHandsFree(text, lang: lang)
+                    }
+                    w.onArmed = { [weak self] in
+                        guard let self, self.state == .idle else { return }
+                        NSSound(named: "Tink")?.play()
+                        self.onState("listening")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { if self.state == .idle { self.onState("idle") } }
+                    }
+                    do {
+                        try w.start()
+                        self.wake = w
+                        self.updateWake()
+                        print("👂 mains libres : dis « Jarvis, … » (⌥Espace marche toujours)")
+                        self.onEngine("\(self.listener.engineName) · mains libres « Jarvis » · \(self.speaker.voiceNames)")
+                    } catch {
+                        print("⚠ mains libres indisponibles : \(error.localizedDescription)")
+                    }
+                }
+            } catch {
+                print("⚠ mains libres indisponibles : \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// The hands-free ear is shut while Jarvis listens by key, thinks or speaks (it must not hear
+    /// itself); during a spoken confirmation it accepts "oui / non" without the name.
+    private func updateWake() {
+        guard let wake else { return }
+        wake.prefer = lang
+        switch state {
+        case .idle:
+            wake.suspended = speaker.busy
+        case .confirming:
+            wake.suspended = false
+            wake.arm(for: 12)
+        default:
+            wake.suspended = true
+        }
     }
 
     private func press() {
@@ -163,6 +218,24 @@ final class Controller {
             answer(pick.text)
             return
         }
+        send(pick)
+    }
+
+    /// Something said hands-free ("Jarvis, …"): an answer to a pending confirmation, or a request.
+    private func heardHandsFree(_ text: String, lang heardLang: String) {
+        guard state == .idle || state == .confirming else { return }
+        tRelease = Date()
+        sttMs = 0
+        if pendingApproval != nil, state == .confirming {
+            answer(text)
+            return
+        }
+        guard state == .idle else { return }
+        NSSound(named: "Pop")?.play()
+        send(Candidate(lang: heardLang, text: text, confidence: 1))
+    }
+
+    private func send(_ pick: Candidate) {
         lang = pick.lang
         print("🗣 [\(pick.lang)] \(pick.text)")
         let id = shortId()

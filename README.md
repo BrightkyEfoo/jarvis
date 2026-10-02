@@ -102,6 +102,7 @@ jarvis costs week              # consommation (équivalent API) et quota de l'ab
 jarvis memory                  # ce que Jarvis retient · `jarvis memory notes` pour tes notes
 jarvis dashboard               # tableau de bord : activité, validations, coûts, prévisions
 jarvis voice                   # maintiens ⌥Espace et parle ; réappuie pour couper la parole
+#                                ou, sans clavier : « Jarvis, … » (mains libres)
 jarvis voice selftest          # vérifie la reconnaissance FR/EN et la voix, sans micro
 jarvis voice samples           # écoute les voix neuronales (FR/EN) et choisis dans le tableau de bord
 jarvis stop                    # STOP : tout s'arrête

@@ -613,6 +613,7 @@ struct VoicePicker: View {
                 Text("Neuronal (Parakeet + PocketTTS, local)").tag("neural")
                 Text("Système (Apple)").tag("system")
             }
+            Toggle("Mains libres : dire « Jarvis, … » (micro ouvert, tout reste sur le Mac)", isOn: $config.wake)
             row("Voix française", lang: "fr", selection: $config.frNeural)
             row("Voix anglaise", lang: "en", selection: $config.enNeural)
             HStack {

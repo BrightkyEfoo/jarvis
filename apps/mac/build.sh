@@ -22,7 +22,19 @@ KC="$HOME/Library/Application Support/Jarvis/signing/jarvis-signing.keychain-db"
 HASH_FILE="$HOME/Library/Application Support/Jarvis/signing/identity.sha1"
 if [ -f "$KC" ] && [ -f "$HASH_FILE" ]; then
   security unlock-keychain -p "$(cat "$HOME/Library/Application Support/Jarvis/signing/.kc")" "$KC"
+  # codesign only finds identities in keychains on the user's search list: add ours for the
+  # signature, then put the list back exactly as it was.
+  ORIG=()
+  while IFS= read -r k; do
+    k="${k//\"/}"; k="${k#"${k%%[![:space:]]*}"}"
+    [ -n "$k" ] && ORIG+=("$k")
+  done < <(security list-keychains -d user)
+  restore() { security list-keychains -d user -s "${ORIG[@]}"; }
+  trap restore EXIT
+  security list-keychains -d user -s "${ORIG[@]}" "$KC"
   codesign --force --sign "$(cat "$HASH_FILE")" --keychain "$KC" --identifier cm.brightkyefoo.jarvis "$APP"
+  restore
+  trap - EXIT
   echo "signé avec l'identité locale stable"
 else
   codesign --force --sign - --identifier cm.brightkyefoo.jarvis "$APP"

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.12.0 — Mains libres, signature stable (02/10/2026)
+
+### Ajouté
+- **« Jarvis, … » sans toucher le clavier** (ADR-029) : détection de parole Silero + Parakeet, le
+  tout local. Le nom doit venir en premier. « Jarvis » seul réveille Jarvis, et « oui » / « non »
+  suffisent pendant une confirmation.
+- **Réglage** : interrupteur « Mains libres » dans Réglages › Voix (`wake` dans `voice.json`).
+- **Outils de diagnostic** : `--wake-test` passe des fichiers audio dans la chaîne mains libres.
+- **Tests** : 8 tests Swift du mot d'éveil.
+
+### Corrigé
+- **Saisie des tokens et mots de passe** : affichage de •, collage multi-lignes et entre
+  crochets, lecture du presse-papiers (`jarvis auth set-token`).
+- **Signature locale** : `codesign` ne trouvait pas l'identité si son trousseau n'était pas dans
+  la liste de recherche. `build.sh` l'y ajoute le temps de la signature, puis remet la liste de
+  Brightky à l'identique.
+- **Voix neuronales** : la bascule se fait au premier moment de repos.
+
 ## 0.11.0 — S7 : de Trello aux workers, en parallèle (02/10/2026)
 
 ### Ajouté

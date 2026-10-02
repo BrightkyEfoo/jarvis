@@ -725,3 +725,41 @@ Brightky.
   parallèle a révélé la course.
 - **Relecture vocale** : `worker_status` donne la PR, puis `pr_read` permet à Jarvis d'expliquer
   le diff en mots simples.
+
+## ADR-029 — Mains libres : « Jarvis, … » (02/10/2026, avancé depuis le S11)
+
+**Demande de Brightky** : parler à Jarvis à tout moment depuis son Mac, sans passer par la ligne
+de commande ni par un raccourci clavier.
+
+**Décision** : un mot d'éveil par transcription, 100 % local, sans modèle de mot d'éveil à
+entraîner.
+- **Détection de parole** : le micro reste ouvert dans Jarvis.app. **Silero VAD** (FluidAudio,
+  par tranches de 256 ms, environ 1 ms de calcul par tranche) découpe la parole en énoncés : début,
+  puis fin après 0,6 s de silence, 14 s au plus, avec 0,5 s de pré-enregistrement pour ne pas
+  couper le premier mot.
+- **Lecture** : chaque énoncé est lu par **Parakeet** (environ 100 ms). Seuls ceux qui
+  **commencent par le nom** passent au cerveau : « Jarvis, … », « Hey / OK / Dis Jarvis, … ».
+  Les variantes proches sont acceptées (Jervis, Javis, Charvis…) ; « Jardin » et « Travis » ne
+  le sont pas.
+- **Cas particuliers**
+  - « Jarvis » seul réveille Jarvis : l'énoncé suivant, dans les 8 s, est la commande.
+  - Pendant une confirmation N2 parlée, « oui » ou « non » est accepté sans le nom.
+- **L'oreille est fermée** quand Jarvis écoute par la touche, réfléchit ou parle, pour qu'il ne
+  s'entende pas lui-même. ⌥Espace reste disponible et permet de lui couper la parole.
+- **Rien n'est enregistré sur disque**. Les énoncés qui ne commencent pas par le nom sont jetés.
+- **Réglage** : `wake` dans `voice.json`, actif par défaut, et dans Tableau de bord › Réglages ›
+  Voix.
+
+**Risque assumé (SECURITY R13)** : une personne présente, une vidéo ou la télé peut dire
+« Jarvis, … ». Les garde-fous restent ceux de la voix :
+- N2 demande un « oui » ;
+- N3 n'est jamais validé à la voix (PIN au terminal ou au tableau de bord) ;
+- N4 reste interdit ;
+- STOP reste disponible en permanence (⌃⎋).
+
+**Mesure** : les 6 extraits de test, voix FR et EN, sont correctement classés (commande, mention
+de Jarvis, « jardin », phrase sans appel). Un « Hey Jarvis » prononcé par une voix française de
+synthèse a été lu « Ai-je revis ? » : d'où la consigne de commencer par « Jarvis ».
+
+**Corrigé au passage** : la bascule vers les voix neuronales n'avait pas lieu si Brightky parlait
+pile au moment où elles finissaient de charger. Elle se fait désormais au premier retour au repos.

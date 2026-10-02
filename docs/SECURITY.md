@@ -227,6 +227,7 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 | R10 | Un process local qui usurperait le socket du daemon pourrait commander l'actionneur de Jarvis.app (et ses autorisations TCC) | Catalogue fixe, refus intégrés à l'app, dossier `run/` en 0700 | S12 : l'app vérifie la signature du pair (`LOCAL_PEERPID` + code signing) |
 | R11 | Sur un domaine en liste blanche, une page piégée peut obtenir un « Commenter » sans confirmation | Liste vide par défaut ; destructions et paiements jamais dispensés | Choix de Brightky, à garder court |
 | R12 | Une capture d'écran peut montrer des données sensibles affichées dans une app autorisée | Apps sensibles exclues, captures hors audit | Masquage des zones sensibles (plus tard) |
+| R13 | Mains libres : quelqu'un dans la pièce, une vidéo ou la télé peut dire « Jarvis, … » | Le nom doit ouvrir la phrase ; N2 demande un « oui », N3 jamais à la voix, N4 interdit ; ⌃⎋ STOP ; mode désactivable | Reconnaissance de la voix de Brightky (S11) |
 
 ## Signaler un problème
 

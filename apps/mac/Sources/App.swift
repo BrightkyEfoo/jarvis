@@ -52,6 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             VoiceLab.session(args[i + 1])
             return
         }
+        if let i = args.firstIndex(of: "--wake-test") {
+            VoiceLab.wakeTest(Array(args[(i + 1)...]))
+            return
+        }
         if let i = args.firstIndex(of: "--voice-screen") {
             VoiceLab.screen(Array(args[(i + 1)...]))
             return
