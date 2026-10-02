@@ -221,25 +221,32 @@ final class NeuralSpeaker: SpeechOutput, @unchecked Sendable {
     private let fallback: SpeechOutput
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    /// Speeds speech up without changing the voice's pitch.
+    private let timePitch = AVAudioUnitTimePitch()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private var queue: [(text: String, lang: String)] = []
     private var worker: Task<Void, Never>?
     private var generation = 0
     private var pendingBuffers = 0
     private var started = false
-    /// Frames held back before playback starts, so a slow first frame never makes a gap.
+    /// Frames held back before playback starts, so a slow generator never makes a gap: French
+    /// (24 layers, 1.2× real time) needs a cushion, English (2.8×) hardly any.
     private var preroll: [AVAudioPCMBuffer] = []
-    static let prerollFrames = 3
+    private var prerollFrames = 3
+    static let prerollByLang = ["fr": 3, "en": 1]
     var onFirstAudio: () -> Void = {}
     var onIdle: () -> Void = {}
     private let rate: Float
 
-    init(stack: NeuralStack, fallback: SpeechOutput, rate: Float) {
+    init(stack: NeuralStack, fallback: SpeechOutput, rate: Float, speed: Float = 1) {
         self.stack = stack
         self.fallback = fallback
         self.rate = rate
         engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.attach(timePitch)
+        timePitch.rate = speed
+        engine.connect(player, to: timePitch, format: format)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: format)
         // Tests run silently on Brightky's Mac.
         if ProcessInfo.processInfo.environment["JARVIS_MUTE"] == "1" { engine.mainMixerNode.outputVolume = 0 }
         // Started once: starting the output on the first sentence cost ~200 ms of latency.
@@ -287,6 +294,7 @@ final class NeuralSpeaker: SpeechOutput, @unchecked Sendable {
             return
         }
         let gen = generation
+        prerollFrames = Self.prerollByLang[item.lang] ?? 3
         let text = SpokenText.prepare(item.text, lang: item.lang)
         let speaker = WeakBox(self)
         worker = Task.detached {
@@ -320,9 +328,9 @@ final class NeuralSpeaker: SpeechOutput, @unchecked Sendable {
         samples.withUnsafeBufferPointer { src in
             buffer.floatChannelData?[0].update(from: src.baseAddress!, count: samples.count)
         }
-        if !started && preroll.count < Self.prerollFrames {
+        if !started && preroll.count < prerollFrames {
             preroll.append(buffer)
-            if preroll.count == Self.prerollFrames { flushPreroll() }
+            if preroll.count == prerollFrames { flushPreroll() }
             return
         }
         schedule(buffer, gen: gen)

@@ -5,7 +5,8 @@ import Foundation
 /// for voice cloning (CC0, kyutai/tts-voices), shipped in Resources/voices — see CREDITS.md.
 /// PocketTTS forbids cloning anyone without explicit consent: only such recordings go here.
 enum VoiceCatalog {
-    static let defaults = ["fr": "fabien", "en": "charles"]
+    /// Measured on the same sentence: Samuel 6.4 s (Fabien 9.1 s), Michael 8.5 s (Charles 9.9 s).
+    static let defaults = ["fr": "samuel", "en": "michael"]
 
     static let all: [NeuralVoiceSpec] = [
         // Français — voix données explicitement pour le clonage (CC0)

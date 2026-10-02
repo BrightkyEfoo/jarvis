@@ -203,7 +203,7 @@ enum SelfTest {
     }
 
     @MainActor static func speakNeural(_ stack: NeuralStack, config: VoiceConfig) {
-        let s = NeuralSpeaker(stack: stack, fallback: Speaker(config: config), rate: config.rate)
+        let s = NeuralSpeaker(stack: stack, fallback: Speaker(config: config), rate: config.rate, speed: config.speed)
         neuralSpeaker = s
         var t0 = Date()
         var lines = [("Bonjour Brightky. Tu as deux réunions cet après-midi, et Paul attend ta réponse sur le devis.", "fr"),

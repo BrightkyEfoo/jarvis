@@ -615,6 +615,11 @@ struct VoicePicker: View {
             }
             Toggle("Mains libres : dire « Jarvis, … » (micro ouvert, tout reste sur le Mac)", isOn: $config.wake)
             row("Voix française", lang: "fr", selection: $config.frNeural)
+            HStack {
+                Text("Débit")
+                Slider(value: $config.speed, in: 0.8...1.6, step: 0.05)
+                Text(String(format: "×%.2f", config.speed)).font(.body.monospacedDigit()).frame(width: 52, alignment: .trailing)
+            }
             row("Voix anglaise", lang: "en", selection: $config.enNeural)
             HStack {
                 Text(saved ? "Enregistré : Jarvis.app redémarre la voix." : "Échantillons : jarvis voice samples")

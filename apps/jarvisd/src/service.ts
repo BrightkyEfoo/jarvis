@@ -116,6 +116,36 @@ function launchctl(args: string[], tolerate = false): string {
   }
 }
 
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * bootout returns before the old process has exited (jarvisd shuts down gracefully); a bootstrap
+ * issued meanwhile fails with "Input/output error" and left the agent unloaded. Wait for the label
+ * to disappear, then bootstrap, retrying, and check it is really loaded.
+ */
+function replace(label: string, file: string): void {
+  const target = `${domain()}/${label}`;
+  launchctl(['bootout', target], true);
+  for (let i = 0; i < 100 && launchctl(['print', target], true); i++) sleep(100);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      launchctl(['bootstrap', domain(), file]);
+      lastError = undefined;
+      break;
+    } catch (e) {
+      lastError = e;
+      sleep(500 * (attempt + 1));
+    }
+  }
+  launchctl(['enable', target], true);
+  if (!launchctl(['print', target], true)) {
+    throw new Error(
+      `launchd did not load ${label}: ${(lastError as Error | undefined)?.message ?? 'unknown error'}`,
+    );
+  }
+}
+
 export function install(specs: AgentSpec[], p: ServicePaths): string[] {
   mkdirSync(p.agentsDir, { recursive: true });
   mkdirSync(p.logsDir, { recursive: true, mode: 0o700 });
@@ -124,9 +154,7 @@ export function install(specs: AgentSpec[], p: ServicePaths): string[] {
     const file = join(p.agentsDir, `${s.label}.plist`);
     writeFileSync(file, plist(s), { mode: 0o644 });
     execFileSync('/usr/bin/plutil', ['-lint', file], { stdio: 'ignore' });
-    launchctl(['bootout', `${domain()}/${s.label}`], true); // replace a previous version
-    launchctl(['bootstrap', domain(), file]);
-    launchctl(['enable', `${domain()}/${s.label}`], true);
+    replace(s.label, file);
     done.push(file);
   }
   return done;

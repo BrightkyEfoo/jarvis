@@ -110,7 +110,7 @@ final class Controller {
         guard let stack = pendingNeural, state == .idle, !speaker.busy else { return }
         pendingNeural = nil
         let system = speaker
-        speaker = NeuralSpeaker(stack: stack, fallback: system, rate: config.rate)
+        speaker = NeuralSpeaker(stack: stack, fallback: system, rate: config.rate, speed: config.speed)
         listener.cancel()
         listener = NeuralListener(asr: stack.asr)
         wire()
