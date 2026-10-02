@@ -148,6 +148,17 @@ export const PolicySchema = z
       })
       .strict()
       .prefault({}),
+    forges: z
+      .object({
+        /** Self-hosted GitLab root (https only); gitlab.com by default. */
+        gitlab_url: z.url({ protocol: /^https$/ }).prefault('https://gitlab.com'),
+        /** Character budget for diffs handed to the model (the rest is summarised as a file list). */
+        max_diff_chars: z.number().int().min(2_000).max(200_000).prefault(60_000),
+        /** Trello label that marks cards Jarvis may take (S7). */
+        trello_label: z.string().max(40).prefault('jarvis'),
+      })
+      .strict()
+      .prefault({}),
     computer: z
       .object({
         /** Browser Jarvis drives (Brightky's own profile, through AppleScript). */

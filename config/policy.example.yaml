@@ -103,6 +103,13 @@ macos:
   shortcuts: []
   shortcuts_deny: []
 
+# GitHub / GitLab / Trello (tokens in the Keychain: docs/SETUP-FORGES.md). Reading is N0,
+# commenting and moving cards N2. Merging is never automatic (ADR-023).
+forges:
+  gitlab_url: https://gitlab.com
+  max_diff_chars: 60000
+  trello_label: jarvis
+
 # Driving the Mac when there is no API: Brightky's browser profile, Notes, Reminders, and any app
 # through screenshots + clicks/keystrokes (done by Jarvis.app, which holds the macOS permissions).
 # Built into the code and NOT relaxable here: banking/payment/password/account-security sites,

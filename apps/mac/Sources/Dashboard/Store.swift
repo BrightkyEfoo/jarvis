@@ -15,6 +15,7 @@ final class Store: ObservableObject {
     @Published var quota: [QuotaWindow] = []
     @Published var forecast: Forecast?
     @Published var mail: [MailAccount] = []
+    @Published var forges: [ForgeAccount] = []
     @Published var facts: [Fact] = []
     @Published var notesDir = ""
     @Published var tools: [ToolInfo] = []
@@ -104,6 +105,7 @@ final class Store: ObservableObject {
         quota = s.quota
         forecast = s.forecast
         mail = s.mail
+        forges = s.forges ?? []
         facts = s.memory.facts
         notesDir = s.memory.notesDir
         tools = s.tools

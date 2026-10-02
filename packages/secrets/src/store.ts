@@ -9,6 +9,11 @@ export const SecretName = {
   googleClient: 'google.client',
   googleRefreshToken: (account: string) => `google.${account}.refresh_token`,
   mailPassword: (account: string) => `mail.${account}.password`,
+  /** Fine-grained personal access token (no admin rights). */
+  githubToken: 'github.token',
+  gitlabToken: 'gitlab.token',
+  trelloKey: 'trello.key',
+  trelloToken: 'trello.token',
 } as const;
 
 export interface SecretStore {

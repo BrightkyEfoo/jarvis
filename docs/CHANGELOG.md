@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.0 — S5 : GitHub, GitLab et Trello (02/10/2026)
+
+### Ajouté
+- **Clients** GitHub, GitLab (gitlab.com ou auto-hébergé) et Trello. Tokens dans le Trousseau,
+  transmis uniquement dans les en-têtes (ADR-026).
+- **Outils** :
+  - `forge_inbox` : PR à relire, mes PR avec CI et relectures, issues assignées ;
+  - `pr_list`, `pr_read` (diff dans un budget, discussion), `issue_list`, `issue_read` ;
+  - `forge_comment` (N2) ;
+  - `trello_boards`, `trello_lists`, `trello_cards` (dont le filtre par étiquette),
+    `trello_card`, `trello_comment` (N2), `trello_move` (N2).
+- **Briefing du matin** : section Code (GitHub, GitLab, Trello).
+- **CLI** : `jarvis github connect`, `jarvis gitlab connect [url]`, `jarvis trello connect` ;
+  guide dans `docs/SETUP-FORGES.md`.
+- **Tableau de bord** : section « Code et tâches » dans Comptes ; résumés traduits en français.
+- **Politique** : section `forges` (`gitlab_url`, `max_diff_chars`, `trello_label`).
+- **Tests** : 8 tests de clients (fausse API : en-têtes, chemins, pagination, budget de diff,
+  noms invalides), 7 tests e2e (boîte de réception, injection dans une PR, commentaire validé,
+  Trello, briefing) et 3 tests Swift.
+
+### Sécurité
+- Les noms de dépôts contenant `.` ou `..` sont refusés : le test l'a révélé avant la mise en
+  service.
+
 ## 0.8.0 — Voix neuronales locales (02/10/2026)
 
 ### Ajouté

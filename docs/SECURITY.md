@@ -133,6 +133,22 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   signature auto-signée, qui sert à stabiliser l'identité TCC de l'app. Son mot de passe est
   aléatoire, et ce n'est pas celui de Brightky.
 
+## Forges (GitHub, GitLab, Trello)
+
+- **Tokens**
+  - Ils sont dans le Trousseau. GitHub utilise un token *fine-grained* sans Administration,
+    Secrets ni Workflows.
+  - Ils voyagent uniquement dans des en-têtes, jamais dans une URL ni dans un message d'erreur.
+  - Ils sont enregistrés dans le rédacteur au démarrage.
+- **Appels** : délai d'expiration, hôte limité à la base de l'API, https obligatoire pour
+  GitLab.
+- **Entrées** : dépôts et identifiants validés ; segments `.` et `..` refusés.
+- **Contenu** : tout ce qui vient des forges (PR, diffs, issues, cartes) est une donnée externe.
+  Il est encadré et teinte la session.
+- **Actions au nom de Brightky** : commenter et déplacer une carte sont N2. L'auto-approbation
+  par dépôt est possible, jamais après un contenu externe.
+- **Merge** : jamais automatique (ADR-023).
+
 ## Pilotage du Mac (navigateur, apps, écran)
 
 - **Qui tient les autorisations** : Jarvis.app seule (Accessibilité, Enregistrement de l'écran,

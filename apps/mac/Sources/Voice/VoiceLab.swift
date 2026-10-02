@@ -35,7 +35,8 @@ enum VoiceLab {
                 let units = PocketTtsComputeUnits(conditioner: unit("COND"), flowLM: unit("FLOWLM"), flowDecoder: unit("FLOWDEC"))
                 let precision: PocketTtsPrecision = env["PREC"] == "fp16" ? .fp16 : .int8
                 let tl = Date()
-                let m = PocketTtsManager(language: .french24L, precision: precision, computeUnits: units)
+                let placement: PocketTtsModelPlacement = env["PLACEMENT"] == "ane" ? .ane : .gpu
+                let m = PocketTtsManager(language: .french24L, precision: precision, placement: placement, computeUnits: units)
                 try await m.initialize()
                 print("chargé en \(ms(since: tl)) ms (COND=\(env["COND"] ?? "-") FLOWLM=\(env["FLOWLM"] ?? "-") FLOWDEC=\(env["FLOWDEC"] ?? "-"))")
                 let data = try await m.cloneVoice(from: URL(fileURLWithPath: reference))

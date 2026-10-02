@@ -611,6 +611,7 @@ intégrée dans Jarvis.app, qui devient un paquet Swift.
 | Supertonic-3 (5 voix M, 31 langues) | 0,6–0,7× le temps réel | écarté (coupures) |
 | PocketTTS FR, phrase par phrase | 0,6–0,8×, 1,4 s de préremplissage par phrase | remplacé par les blocs |
 | PocketTTS FR, blocs de 100 jetons, GPU | 1,2×, premier son 0,6–1 s | **retenu** |
+| PocketTTS FR, placement puce neuronale (rank-4) | 0,8×, premier son 1,4 s | écarté (modèles supprimés) |
 | Kokoro FR | une seule voix, féminine | écarté |
 
 **Téléchargement réel** (connexion mesurée entre 0,15 et 1,5 Mo/s) : seul le nécessaire.
@@ -622,3 +623,38 @@ intégrée dans Jarvis.app, qui devient un paquet Swift.
 
 **Écartés** : Voxtral TTS (4 B, licence non commerciale), Chatterbox (environ 1× sur M5 Pro, pas
 de streaming), Qwen3-TTS et Kyutai TTS 1,6 B (trop lourds pour le M1 Pro avec les workers).
+
+## ADR-026 — S5 : GitHub, GitLab et Trello (02/10/2026)
+
+**Décision.** Trois clients REST en `fetch` natif, sans SDK, dans `packages/connectors/src/forge`.
+- **Sécurité des identifiants**
+  - Les tokens sont dans le Trousseau. Ils voyagent **uniquement dans des en-têtes** :
+    `Authorization: Bearer` pour GitHub, `PRIVATE-TOKEN` pour GitLab, `OAuth` pour Trello.
+    Jamais dans une URL, car les URL finissent dans les erreurs et les journaux.
+  - Chaque appel a un délai d'expiration, refuse tout autre hôte que la base de l'API, et ses
+    erreurs ne contiennent jamais le token.
+- **Validation des entrées**
+  - Les noms de dépôts sont validés sans segment `.` ni `..` : un test a révélé que `../../etc`
+    passait la première version de l'expression régulière.
+  - Les identifiants Trello sont validés eux aussi.
+  - GitLab n'accepte que le https.
+- **Boîte de réception** (`forge_inbox`)
+  - **GitHub**, en 3 recherches : `review-requested:@me`, `author:@me`, `assignee:@me`. Pour ses
+    propres PR (10 au plus), Jarvis ajoute l'état de la CI (check-runs) et des relectures (le
+    dernier avis de chaque relecteur compte).
+  - **GitLab** : endpoints globaux (`reviewer_username`, `created_by_me`, `assigned_to_me`),
+    avec le pipeline et les approbations.
+- **Diffs** : un budget de caractères (`forges.max_diff_chars`, 60 000 par défaut) est réparti
+  des plus petits fichiers aux plus gros. Au-delà, le diff est tronqué ou remplacé par la liste
+  des fichiers. Claude résume en mots simples.
+- **Niveaux**
+  - La lecture est N0. Elle teinte la session : une PR peut contenir une injection.
+  - Commenter et déplacer une carte sont N2, avec auto-approbation possible par dépôt dans la
+    politique, et jamais après un contenu externe (moteur existant).
+- **Briefing** : une section « Code » avec ce qui attend relecture, ses PR en échec de CI ou
+  avec changements demandés, et ses cartes Trello.
+- **Connexion** : `jarvis github|gitlab|trello connect`. Saisie masquée, vérification « qui
+  suis-je » avant l'enregistrement, avertissement si le token GitHub est classique (`ghp_`).
+
+**Choix reporté au S6/S7** : ouvrir des PR, merger, lancer les workers, prendre les cartes
+étiquetées `jarvis` (`forges.trello_label`).

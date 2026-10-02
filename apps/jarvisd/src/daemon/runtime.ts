@@ -3,12 +3,17 @@ import { mkdirSync } from 'node:fs';
 import { AuditLog } from '@jarvis/audit';
 import {
   type CalendarProvider,
+  type ForgeClient,
+  type ForgeId,
+  GitHubClient,
+  GitLabClient,
   GmailProvider,
   GoogleAuth,
   GoogleCalendar,
   type GoogleClient,
   ImapProvider,
   type MailProvider,
+  TrelloClient,
 } from '@jarvis/connectors';
 import { Memory } from '@jarvis/memory';
 import {
@@ -35,6 +40,7 @@ import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import { ClaudeResearcher, type Researcher } from '../orchestrator/research.ts';
 import type { AppPaths } from '../paths.ts';
 import { createComputerTools } from '../tools/computer.ts';
+import { createForgeTools, workBriefing } from '../tools/forge.ts';
 import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
@@ -72,6 +78,8 @@ export interface RuntimeOptions {
   research?: { researcher: Researcher | null; youtube: YouTube | null };
   /** Tests inject a fake Jarvis.app; production waits for the real one on the socket. */
   actuator?: Actuator;
+  /** Tests inject fake forges; production builds them from the Keychain tokens. */
+  forges?: { forges: Map<ForgeId, ForgeClient>; trello: TrelloClient | null };
 }
 
 export type Activity =
@@ -155,6 +163,31 @@ function buildConnectors(policy: Policy, secrets: SecretStore, redactor: Redacto
   return { providers, calendar: calAuth ? new GoogleCalendar(calAuth) : null, status };
 }
 
+/** GitHub / GitLab / Trello clients for the tokens present in the Keychain. */
+function buildForges(policy: Policy, secrets: SecretStore, redactor: Redactor) {
+  const forges = new Map<ForgeId, ForgeClient>();
+  const secret = (name: string) => {
+    const v = secrets.get(name);
+    if (v) redactor.register(name, v);
+    return v;
+  };
+  // Re-read at each call: `jarvis github connect` takes effect without restarting the daemon.
+  const live = (name: string) => () => secrets.get(name) ?? '';
+  if (secret(SecretName.githubToken))
+    forges.set('github', new GitHubClient({ token: live(SecretName.githubToken) }));
+  if (secret(SecretName.gitlabToken)) {
+    forges.set(
+      'gitlab',
+      new GitLabClient({ token: live(SecretName.gitlabToken), base: policy.forges.gitlab_url }),
+    );
+  }
+  const trello =
+    secret(SecretName.trelloKey) && secret(SecretName.trelloToken)
+      ? new TrelloClient({ key: live(SecretName.trelloKey), token: live(SecretName.trelloToken) })
+      : null;
+  return { forges, trello };
+}
+
 export interface Runtime {
   policy: Policy;
   audit: AuditLog;
@@ -178,6 +211,7 @@ export interface Runtime {
   /** Where Jarvis.app registers as the actuator (browser, apps, screen). */
   bridge: ActuatorBridge;
   actuatorInfo(): { connected: boolean; version?: string; capabilities?: string[] };
+  forgeStatus(): { id: string; connected: boolean; connect: string }[];
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
   quotaWarning: string | null;
@@ -253,6 +287,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     gate.register(t);
   for (const t of createMemoryTools(memory)) gate.register(t);
 
+  const forges = o.forges ?? buildForges(policy, secrets, redactor);
   const built = o.connectors
     ? {
         providers: o.connectors.providers,
@@ -283,6 +318,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     summarizer,
     triageMax: policy.mail.triage_max,
     status: (signal) => (o.mac ?? realMacOps).status(signal),
+    work: () => workBriefing(forges),
   })) {
     gate.register(t);
   }
@@ -305,6 +341,9 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   const bridge = new ActuatorBridge();
   const actuator = o.actuator ?? bridge;
   for (const t of createComputerTools({ policy, actuator })) gate.register(t);
+
+  for (const t of createForgeTools({ ...forges, maxDiffChars: policy.forges.max_diff_chars }))
+    gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 
   const rt: Runtime = {
@@ -321,6 +360,12 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     quota,
     brain: null,
     bridge,
+    forgeStatus: () =>
+      (['github', 'gitlab', 'trello'] as const).map((id) => ({
+        id,
+        connected: id === 'trello' ? forges.trello !== null : forges.forges.has(id),
+        connect: `jarvis ${id} connect`,
+      })),
     actuatorInfo: () =>
       actuator.info
         ? { connected: actuator.connected, ...actuator.info }

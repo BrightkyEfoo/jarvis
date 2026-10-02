@@ -410,6 +410,7 @@ function dashboardSnapshot(rt: Runtime) {
       turnsPerDay: monthSoFar.turns / now.getDate(),
     },
     mail: rt.mail.status,
+    forges: rt.forgeStatus(),
     memory: { facts: rt.memory.list(100), notesDir: rt.memory.notesDir },
     tools: rt.gate.tools.map((t) => ({ name: t.name, description: t.description })),
     signature: "fait avec ❤️ par Brightky Efo'o — https://brightkyefoo.cm",

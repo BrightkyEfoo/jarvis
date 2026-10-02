@@ -520,6 +520,16 @@ struct AccountsView: View {
                 }
                 Button("Tester les connexions") { store.testMail() }
             }
+            Section("Code et tâches") {
+                ForEach(store.forges) { f in
+                    HStack {
+                        Image(systemName: f.connected ? "checkmark.circle.fill" : "xmark.circle").foregroundStyle(f.connected ? .green : .secondary)
+                        Text(["github": "GitHub", "gitlab": "GitLab", "trello": "Trello"][f.id] ?? f.id)
+                        Spacer()
+                        if !f.connected { Text(f.connect).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                    }
+                }
+            }
             Section("Outils de Jarvis (\(store.tools.count))") {
                 ForEach(store.tools) { t in
                     VStack(alignment: .leading) {

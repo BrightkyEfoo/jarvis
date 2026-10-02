@@ -92,6 +92,10 @@ enum VoiceTests {
         check(abs(WordErrorRate.of(reference: "un deux trois quatre", hypothesis: "un deux quatre") - 0.25) < 1e-9, "wer deletion")
         check(WordErrorRate.of(reference: "l’équipe produit", hypothesis: "l'équipe produit") == 0, "wer apostrophes")
 
+        check(Wording.fr("Comment on forge acme/app#7: LGTM") == "Commenter acme/app#7 : LGTM", "forge comment fr", Wording.fr("Comment on forge acme/app#7: LGTM"))
+        check(Wording.fr("Move Trello card 5f0000000000000000000003 to list 5f0000000000000000000009") == "Déplacer la carte Trello", "trello move fr")
+        check(Wording.fr("Read PR acme/app#7") == "Lire la PR acme/app#7", "read pr fr")
+
         // Computer control guard, independent of the daemon.
         for url in ["https://www.paypal.com/x", "https://ebanking.ecobank.com", "https://www.afrilandfirstbank.com", "https://github.com/settings/tokens",
                     "https://accounts.google.com/"] {

@@ -163,9 +163,17 @@ struct Snapshot: Decodable {
     let quota: [QuotaWindow]
     let forecast: Forecast
     let mail: [MailAccount]
+    /// GitHub / GitLab / Trello (absent from older daemons).
+    var forges: [ForgeAccount]? = nil
     let memory: MemoryInfo
     let tools: [ToolInfo]
     let signature: String
+}
+
+struct ForgeAccount: Decodable, Identifiable, Hashable {
+    let id: String
+    let connected: Bool
+    let connect: String
 }
 
 struct CalendarItem: Decodable, Identifiable, Hashable {

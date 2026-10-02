@@ -46,7 +46,10 @@ jarvis pin set
 # 3. Gmail + Agenda : suis docs/SETUP-GOOGLE.md, puis
 jarvis google connect ~/Downloads/client_secret_XXXX.json perso
 
-# 4. Politique : relis config/policy.example.yaml, puis scelle-la
+# 4. GitHub, GitLab, Trello : suis docs/SETUP-FORGES.md, puis
+jarvis github connect && jarvis trello connect
+
+# 5. Politique : relis config/policy.example.yaml, puis scelle-la
 ops/scripts/seal-policy.sh config/policy.example.yaml   # demande sudo pour la copie root
 ```
 
@@ -84,6 +87,8 @@ jarvis "qu'est-ce qui m'attend aujourd'hui ?"   # briefing : agenda + mails tri�
 jarvis "réponds à Paul que je valide le devis"  # brouillon → tu confirmes → envoyé
 jarvis "compare Tauri et Electron pour notre HUD"   # recherche web sourcée
 jarvis "résume-moi cette vidéo https://youtu.be/arj7oStGLkU"   # via les sous-titres
+jarvis "qu'est-ce qui m'attend sur GitHub ?"    # PR à relire, mes PR (CI, relectures), issues
+jarvis "résume-moi la PR 7 de acme/app"           # diff expliqué en mots simples
 jarvis "quelle heure est-il ?"
 jarvis "ouvre VS Code sur le projet CodeVault"
 jarvis "sur GitHub, ouvre la PR #7 de CodeVault et résume les commentaires"   # pilote Arc

@@ -386,6 +386,64 @@ async function mailCommand(args: string[]): Promise<void> {
   });
 }
 
+/**
+ * `jarvis github|gitlab|trello connect`: the token is typed hidden, checked against the API (who
+ * am I), then stored in the Keychain. It never goes through the model or the daemon socket.
+ */
+async function forgeConnect(forge: 'github' | 'gitlab' | 'trello', args: string[]): Promise<void> {
+  const { KeychainStore, SecretName } = await import('@jarvis/secrets');
+  const { GitHubClient, GitLabClient, TrelloClient } = await import('@jarvis/connectors');
+  const store = new KeychainStore();
+  try {
+    if (forge === 'github') {
+      console.log(
+        dim(
+          'Crée un token « fine-grained » : github.com/settings/personal-access-tokens/new\n' +
+            '  Dépôts : All repositories (et chaque organisation à part) · Permissions : Contents, Pull requests,\n' +
+            '  Issues : Read and write ; Checks, Commit statuses, Metadata : Read. Aucune permission Administration.',
+        ),
+      );
+      const token = await askHidden('Token GitHub : ');
+      if (!token) return;
+      if (token.startsWith('ghp_'))
+        console.log(red('⚠ token classique : préfère un token fine-grained sans droits admin.'));
+      const login = await new GitHubClient({ token: () => token }).whoami();
+      store.set(SecretName.githubToken, token);
+      console.log(`✔ GitHub connecté en tant que ${login}. Redémarre le daemon.`);
+    } else if (forge === 'gitlab') {
+      const base = args[0] ?? 'https://gitlab.com';
+      console.log(
+        dim(
+          `Token personnel : ${base}/-/user_settings/personal_access_tokens (portée « api », expiration ≤ 1 an).`,
+        ),
+      );
+      const token = await askHidden('Token GitLab : ');
+      if (!token) return;
+      const login = await new GitLabClient({ token: () => token, base }).whoami();
+      store.set(SecretName.gitlabToken, token);
+      console.log(
+        `✔ GitLab (${base}) connecté en tant que ${login}. Si ce n'est pas gitlab.com, mets forges.gitlab_url dans la politique.`,
+      );
+    } else {
+      console.log(
+        dim(
+          'Clé et token : trello.com/power-ups/admin → ta Power-Up → API key, puis « Token » (accès en lecture/écriture).',
+        ),
+      );
+      const key = await askHidden('Clé API Trello : ');
+      const token = key ? await askHidden('Token Trello : ') : '';
+      if (!key || !token) return;
+      const me = await new TrelloClient({ key: () => key, token: () => token }).whoami();
+      store.set(SecretName.trelloKey, key);
+      store.set(SecretName.trelloToken, token);
+      console.log(`✔ Trello connecté en tant que ${me.username}. Redémarre le daemon.`);
+    }
+  } catch (e) {
+    console.error(red(`✖ vérification refusée : ${(e as Error).message}`));
+    process.exitCode = 1;
+  }
+}
+
 /** Opens the dashboard window of Jarvis.app (launching the app if needed). */
 async function dashboardCommand(): Promise<void> {
   const { execFileSync } = await import('node:child_process');
@@ -463,6 +521,9 @@ const HELP = `jarvis — assistant de Brightky
   jarvis memory [list|search <q>|forget <id>|notes]  ce que Jarvis retient
   jarvis google connect <client.json> [compte]  connecter Gmail + Agenda (OAuth)
   jarvis mail add <compte> | status | test      comptes mail (IMAP : mot de passe au Trousseau)
+  jarvis github connect        token GitHub fine-grained → Trousseau
+  jarvis gitlab connect [url]  token GitLab → Trousseau
+  jarvis trello connect        clé + token Trello → Trousseau
   jarvis service install [--dev] [--app] | uninstall | status | logs   démarrage auto (launchd)
   jarvis dashboard             tableau de bord (activité, validations, coûts, prévisions…)
   jarvis voice [build|test|selftest|samples]  voix push-to-talk (⌥Espace), 100 % locale ;
@@ -655,6 +716,17 @@ async function main(argv: string[]): Promise<void> {
       return serviceCommand(rest);
     case 'mail':
       return mailCommand(rest);
+    case 'github':
+    case 'gitlab':
+    case 'trello':
+      if (rest[0] !== 'connect') {
+        console.error(
+          `usage : jarvis ${cmd} connect${cmd === 'gitlab' ? ' [https://gitlab.exemple.com]' : ''}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      return forgeConnect(cmd, rest.slice(1));
     case 'auth':
     case 'pin':
     case 'policy':

@@ -14,6 +14,8 @@ export interface MailToolDeps {
   triageMax: number;
   /** Extra line for the briefing (power, battery…), optional. */
   status?: (signal: AbortSignal) => Promise<string>;
+  /** GitHub / GitLab / Trello section of the briefing, when a forge is connected. */
+  work?: () => Promise<string | null>;
 }
 
 interface DraftRecord {
@@ -251,18 +253,20 @@ export function createMailTools(d: MailToolDeps): ToolDef[] {
     name: 'briefing',
     description:
       "Morning briefing in one call: today's calendar, unread mail of the last 24 h (triaged, urgent first), " +
-      "accounts in trouble, power/battery. Use it for \"qu'est-ce qui m'attend aujourd'hui ?\".",
+      'accounts in trouble, PRs to review / own PRs (GitHub, GitLab), Trello cards, power/battery. Use it for ' +
+      "\"qu'est-ce qui m'attend aujourd'hui ?\".",
     input: {},
     classify: () => ({ level: N0, rule: 'briefing', reason: 'read-only' }),
     summarize: () => 'Morning briefing',
     ingestsExternal: true,
     run: async (_a, ctx) => {
-      const [events, mail, status] = await Promise.allSettled([
+      const [events, mail, status, work] = await Promise.allSettled([
         d.calendar ? d.calendar.events(...dayRange('today'), 30) : Promise.resolve(null),
         d.providers.size
           ? triage([...d.providers.keys()], 24, true, ctx.signal)
           : Promise.resolve(null),
         d.status ? d.status(ctx.signal) : Promise.resolve(null),
+        d.work ? d.work() : Promise.resolve(null),
       ]);
       const out: string[] = [];
       if (events.status === 'fulfilled' && events.value) {
@@ -284,6 +288,9 @@ export function createMailTools(d: MailToolDeps): ToolDef[] {
       } else if (mail.status === 'rejected')
         out.push(`## Mails : indisponibles (${(mail.reason as Error).message})`);
       else out.push('## Mails : aucun compte connecté');
+      if (work.status === 'fulfilled' && work.value) out.push(work.value);
+      else if (work.status === 'rejected')
+        out.push(`## Code : indisponible (${(work.reason as Error).message})`);
       if (status.status === 'fulfilled' && status.value) out.push(`## Mac\n${status.value}`);
       return out.join('\n');
     },
