@@ -487,6 +487,23 @@ async function vaultCommand(sub: string | undefined, name: string | undefined): 
   }
 }
 
+/** `jarvis figma token`: copies this launch's Figma bridge token, to paste in the plugin. */
+async function figmaToken(): Promise<void> {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  try {
+    const token = readFileSync(join(dirname(appPaths().socket), 'figma-token'), 'utf8').trim();
+    execFileSync('/usr/bin/pbcopy', { input: token });
+    console.log(
+      '✔ Jeton du pont Figma copié : colle-le dans le plugin Jarvis (Plugins › Development › Jarvis).',
+    );
+  } catch {
+    console.error(red('✖ pas de jeton : le daemon tourne-t-il ? (le pont Figma démarre avec lui)'));
+    process.exitCode = 1;
+  }
+}
+
 /**
  * `jarvis linkedin connect`: Brightky's own LinkedIn developer app (free "Share on LinkedIn" +
  * "Sign In with LinkedIn using OpenID Connect"), then the OAuth consent in his browser. Client
@@ -631,6 +648,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis auth set-token        enregistrer le token d'abonnement (claude setup-token)
   jarvis pin set               définir / changer le PIN N3
   jarvis linkedin connect      publier sur LinkedIn par l'API officielle (gratuite)
+  jarvis figma token           copier le jeton du pont Figma (à coller dans le plugin)
   jarvis vault set <nom> | list | rm <nom>   coffre (Trousseau) : jetons de déploiement, secrets de CI…
   jarvis policy check <file>   valider un fichier de policy (schéma, YAML)
   jarvis policy verify         vérifier le sceau de la policy
@@ -874,6 +892,13 @@ async function main(argv: string[]): Promise<void> {
       return forgeConnect(cmd, rest.slice(1));
     case 'vault':
       return vaultCommand(rest[0], rest[1]);
+    case 'figma':
+      if (rest[0] !== 'token') {
+        console.error('usage : jarvis figma token');
+        process.exitCode = 1;
+        return;
+      }
+      return figmaToken();
     case 'linkedin':
       if (rest[0] !== 'connect') {
         console.error('usage : jarvis linkedin connect');

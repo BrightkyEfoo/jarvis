@@ -26,7 +26,7 @@ Au démarrage, le daemon écrit un **jeton aléatoire** dans
 2. La première fois, il demande le jeton. Dans un terminal :
 
    ```bash
-   pbcopy < ~/Library/Application\ Support/Jarvis/run/figma-token
+   jarvis figma token        # copie le jeton dans le presse-papiers
    ```
 
    Colle-le dans le champ, puis clique sur **Connecter**. Le plugin le garde sur ce Mac (stockage
