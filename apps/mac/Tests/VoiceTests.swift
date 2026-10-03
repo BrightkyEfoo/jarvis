@@ -190,6 +190,10 @@ enum VoiceTests {
             check((try? ActGuard.check(url: url)) != nil, "app allows \(url)")
         }
         check(ActGuard.isSecure(role: "AXTextField", subrole: "AXSecureTextField", label: ""), "secure subrole")
+        check(ActGuard.isSensitiveTitle("Afriland First Bank — Mon compte"), "bank window is sensitive")
+        check(ActGuard.isSensitiveTitle("Orange Money - Solde"), "mobile money is sensitive")
+        check(!ActGuard.isSensitiveTitle("GitHub — Pull request #7"), "a PR is not sensitive")
+        check(!ActGuard.isSensitiveTitle("Otherwise it works"), "no substring false positive on 'wise'")
         check(ActGuard.isSecure(role: "AXTextField", subrole: nil, label: "Mot de passe"), "password label")
         check(!ActGuard.isSecure(role: "AXButton", subrole: nil, label: "Mot de passe oublié ?"), "button is not a field")
         check(Osa.explain("execution error: Not authorized to send Apple events to Arc. (-1743)").contains("Automatisation"), "TCC hint")

@@ -53,6 +53,18 @@ enum ActGuard {
         if host == "github.com" && path.hasPrefix("/settings") { throw Refused(message: "réglages du compte GitHub : interdit") }
     }
 
+    /// A window whose title shows money or credentials (a bank tab in the browser, a wallet…): never
+    /// captured, even inside a whole-screen picture.
+    static func isSensitiveTitle(_ title: String) -> Bool {
+        let t = title.lowercased()
+        if t.isEmpty { return false }
+        let words = ["bank", "banque", "banking", "afriland", "ecobank", "société générale", "sgbc", "bicec", "uba ",
+                     "paypal", "stripe", "revolut", "orange money", "mobile money", "momo", "mtn money",
+                     "wallet", "portefeuille", "coinbase", "binance", "1password", "bitwarden", "lastpass", "dashlane",
+                     "keychain", "trousseau", "mots de passe", "passwords", "relevé de compte", "solde"]
+        return words.contains { t.contains($0) }
+    }
+
     /// Password / code fields, by AX subrole or description.
     static func isSecure(role: String, subrole: String?, label: String) -> Bool {
         if subrole == "AXSecureTextField" { return true }

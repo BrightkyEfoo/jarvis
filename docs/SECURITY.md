@@ -247,7 +247,8 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   N2 exige un humain.
 - **Captures** : envoyées au modèle, jamais écrites dans l'audit (empreinte et taille seulement).
   Les apps interdites ne sont jamais capturées. Sur un écran entier, elles sont exclues de
-  l'image par ScreenCaptureKit.
+  l'image par ScreenCaptureKit. Il en va de même pour toute fenêtre dont le titre montre de
+  l'argent ou des identifiants (banque, mobile money, portefeuille, mots de passe).
 - **Le bureau** (ADR-030) :
   - lister les fenêtres et regarder un écran : N0 ;
   - ranger, masquer ou réduire une fenêtre : N1 ;
@@ -368,8 +369,12 @@ Risque résiduel : R15 (tableau des risques connus).
   - Chaque argument est échappé : le serveur exécute exactement l'argv validé, sans injection.
   - Environnement réduit au minimum : HOME, agent SSH, PATH.
 - **Niveaux** :
-  - N0 : lectures d'une liste fixe, sans les options qui écrivent ou suivent en continu
-    (`--output`, `-f`).
+  - N0 : lectures d'une liste fixe. Chaque commande a sa règle d'arguments exacte (pas de
+    préfixe), sans les options qui écrivent, suppriment ou suivent en continu. Rien qui affiche
+    des secrets (`kubectl get`, `docker inspect`, `env`, `cat`).
+  - N4 aussi : une affectation en premier mot, un programme lancé par un autre (`env`, `nice`,
+    `timeout`, `xargs`…) et les clients réseau. Le classement voit donc toujours le vrai
+    programme.
   - N3 (PIN, session non teintée) : tout changement en prod.
   - N2 : tout changement en staging ou en dev.
   - N4 : `rm`, `sudo` et autres élévations, `curl`/`wget`, shells et interpréteurs, comptes, droits,

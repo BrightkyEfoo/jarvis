@@ -101,6 +101,9 @@ final class ScreenActor {
             win = frontWindow(of: app.processIdentifier)
         }
         guard let win else { throw ActGuard.Refused(message: "\(app.localizedName ?? "l'app") n'a pas de fenêtre visible") }
+        if ActGuard.isSensitiveTitle(win.title) {
+            throw ActGuard.Refused(message: "cette fenêtre montre de l'argent ou des identifiants : jamais capturée")
+        }
         try cancel.check()
 
         let image = try blocking { () async throws -> CGImage in

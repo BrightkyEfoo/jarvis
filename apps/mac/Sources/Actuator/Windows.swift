@@ -110,9 +110,14 @@ extension ScreenActor {
             guard let display = content.displays.first(where: { $0.displayID == d.id }) else {
                 throw ActGuard.Refused(message: "écran introuvable pour la capture")
             }
-            // Protected apps are not drawn at all: what is behind them shows instead.
-            let hidden = content.applications.filter { ActGuard.isForbidden(bundle: $0.bundleIdentifier, name: $0.applicationName) }
-            let filter = SCContentFilter(display: display, excludingApplications: hidden, exceptingWindows: [])
+            // Protected apps and money / credential windows are not drawn at all: what is behind them
+            // shows instead.
+            let hidden = content.windows.filter { w in
+                guard let app = w.owningApplication else { return false }
+                return ActGuard.isForbidden(bundle: app.bundleIdentifier, name: app.applicationName)
+                    || ActGuard.isSensitiveTitle(w.title ?? "")
+            }
+            let filter = SCContentFilter(display: display, excludingWindows: hidden)
             let scale = CGFloat(filter.pointPixelScale)
             let px = CGSize(width: d.bounds.width * scale, height: d.bounds.height * scale)
             let k = min(1, Self.maxEdge / max(px.width, px.height))
@@ -127,7 +132,7 @@ extension ScreenActor {
         }
         let kx = CGFloat(image.width) / d.bounds.width, ky = CGFloat(image.height) / d.bounds.height
         let rows: [[String: Any]] = visibleWindows(displays)
-            .filter { $0.display?.id == d.id && !ActGuard.isForbidden($0.app) }
+            .filter { $0.display?.id == d.id && !ActGuard.isForbidden($0.app) && !ActGuard.isSensitiveTitle($0.title) }
             .prefix(60)
             .map { s in
                 ["app": s.app.localizedName ?? "?", "title": String(s.title.prefix(200)),

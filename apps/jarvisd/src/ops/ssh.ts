@@ -4,9 +4,13 @@ import { type Classification, forbid, N0, N2, N3, type Policy } from '@jarvis/po
 export type OpsServer = Policy['ops']['servers'][number];
 export type OpsApp = OpsServer['apps'][number];
 
-/** One word for the remote shell: single-quoted, so the server runs exactly this argv. */
+/**
+ * One word for the remote shell: single-quoted unless it is plainly safe, so the server runs exactly
+ * this argv. `=` is not "plainly safe": an unquoted `X=1` before a command is an assignment that
+ * would hide the real program from the classifier.
+ */
 export function shQuote(word: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+  return /^[A-Za-z0-9_@%+:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
 export const remoteCommand = (argv: readonly string[]) => argv.map(shQuote).join(' ');
@@ -32,38 +36,113 @@ export function sshArgs(server: OpsServer, argv: readonly string[]): string[] {
   ];
 }
 
-/** Read-only commands Jarvis may run on a server without asking (argv prefixes). */
-const READ_ONLY: readonly (readonly string[])[] = [
-  ['uptime'],
-  ['hostname'],
-  ['whoami'],
-  ['nproc'],
-  ['df'],
-  ['free'],
-  ['ls'],
-  ['ps'],
-  ['docker', 'ps'],
-  ['docker', 'images'],
-  ['docker', 'logs'],
-  ['docker', 'stats', '--no-stream'],
-  ['docker', 'inspect'],
-  ['docker', 'compose', 'ps'],
-  ['docker', 'compose', 'logs'],
-  ['systemctl', 'status'],
-  ['systemctl', 'is-active'],
-  ['systemctl', 'list-units'],
-  ['journalctl'],
-  ['git', 'status'],
-  ['git', 'log'],
-  ['kubectl', 'get'],
-  ['kubectl', 'describe'],
-  ['kubectl', 'logs'],
-  ['kubectl', 'top'],
-  ['nginx', '-t'],
+const flagsOnly = (allowed: RegExp) => (rest: readonly string[]) =>
+  rest.every((a) => allowed.test(a));
+const none = (rest: readonly string[]) => rest.length === 0;
+/** Arguments that are names or paths, never options (a path cannot start with "-"). */
+const plain = /^[^-]/;
+
+/** Options that turn a reader into a writer, a runner or an endless stream. */
+const NOT_READING = /^(--output|-o$|--ext-diff|--textconv|--exec|--follow$|-f$|--watch|-w$)/;
+/** journalctl options that delete, rotate or move logs. */
+const JOURNAL_WRITES =
+  /^--(vacuum|rotate|flush|sync|relinquish|smart-relinquish|setup-keys|update-catalog|new-id128)/;
+
+/**
+ * Read-only commands Jarvis may run on a server without asking: an exact prefix and a check of
+ * every remaining argument. Commands that print secrets are not here (kubectl get, docker inspect,
+ * env, cat): they need Brightky's approval like any other command.
+ */
+const READ_ONLY: readonly {
+  prefix: readonly string[];
+  rest: (rest: readonly string[]) => boolean;
+}[] = [
+  { prefix: ['uptime'], rest: none },
+  { prefix: ['hostname'], rest: none },
+  { prefix: ['whoami'], rest: none },
+  { prefix: ['nproc'], rest: none },
+  { prefix: ['df'], rest: (r) => r.every((a) => /^-[hHTilP]+$/.test(a) || plain.test(a)) },
+  { prefix: ['free'], rest: flagsOnly(/^-[bkmgthw]+$|^--(human|total|wide)$/) },
+  { prefix: ['ls'], rest: (r) => r.every((a) => /^-[lahtrRS1dFG]+$/.test(a) || plain.test(a)) },
+  // `ps e` / `ps -e…` variants with e in BSD syntax print the environment: only these forms.
+  {
+    prefix: ['ps'],
+    rest: (r) => r.length === 0 || (r.length === 1 && ['aux', '-ef', '-e'].includes(r[0] ?? '')),
+  },
+  { prefix: ['docker', 'ps'], rest: flagsOnly(/^(-a|--all|--no-trunc|-q|--quiet|-s|--size)$/) },
+  { prefix: ['docker', 'images'], rest: flagsOnly(/^(-a|--all|--no-trunc|-q|--quiet|--digests)$/) },
+  {
+    prefix: ['docker', 'stats', '--no-stream'],
+    rest: (r) => r.every((a) => plain.test(a) || a === '--no-trunc'),
+  },
+  { prefix: ['docker', 'logs'], rest: (r) => r.every((a) => !NOT_READING.test(a)) },
+  { prefix: ['docker', 'compose', 'ps'], rest: (r) => r.every((a) => !NOT_READING.test(a)) },
+  { prefix: ['docker', 'compose', 'logs'], rest: (r) => r.every((a) => !NOT_READING.test(a)) },
+  {
+    prefix: ['systemctl', 'status'],
+    rest: (r) =>
+      r.every((a) => plain.test(a) || /^(--no-pager|-n\d*|--lines=\d+|-l|--full)$/.test(a)),
+  },
+  { prefix: ['systemctl', 'is-active'], rest: (r) => r.every((a) => plain.test(a)) },
+  {
+    prefix: ['systemctl', 'list-units'],
+    rest: (r) => r.every((a) => plain.test(a) || /^--(type|state)=\w+$|^--no-pager$/.test(a)),
+  },
+  {
+    prefix: ['journalctl'],
+    rest: (r) => r.every((a) => !JOURNAL_WRITES.test(a) && !NOT_READING.test(a)),
+  },
+  { prefix: ['git', 'status'], rest: (r) => r.every((a) => !NOT_READING.test(a)) },
+  { prefix: ['git', 'log'], rest: (r) => r.every((a) => !NOT_READING.test(a)) },
+  {
+    prefix: ['kubectl', 'describe'],
+    rest: (r) => r.every((a) => !NOT_READING.test(a) && !a.startsWith('--kubeconfig')),
+  },
+  {
+    prefix: ['kubectl', 'logs'],
+    rest: (r) => r.every((a) => !NOT_READING.test(a) && !a.startsWith('--kubeconfig')),
+  },
+  { prefix: ['kubectl', 'top'], rest: (r) => r.every((a) => !a.startsWith('--kubeconfig')) },
+  { prefix: ['nginx', '-t'], rest: none },
 ];
 
-/** Options that turn a reader into a writer or a runner (git log --output, docker logs is safe…). */
-const WRITE_FLAGS = /^(--output|-o$|--exec|--follow$|-f$|--watch|-w$)/;
+/** Run another program given as an argument: the real command would escape the checks. */
+const WRAPPERS = new Set([
+  'env',
+  'nice',
+  'ionice',
+  'nohup',
+  'timeout',
+  'stdbuf',
+  'time',
+  'command',
+  'exec',
+  'builtin',
+  'xargs',
+  'watch',
+  'chroot',
+  'setsid',
+  'unshare',
+  'nsenter',
+  'flock',
+  'script',
+  'busybox',
+  'parallel',
+]);
+/** Network clients: data would leave the server, or something would come in. */
+const NETWORK = new Set([
+  'ssh',
+  'scp',
+  'sftp',
+  'rsync',
+  'nc',
+  'ncat',
+  'netcat',
+  'socat',
+  'telnet',
+  'ftp',
+  'tftp',
+]);
 
 /** Never, even with the PIN: destroys data, changes access, or runs code that cannot be read. */
 const NEVER: Record<string, string> = {
@@ -101,6 +180,12 @@ const NEVER: Record<string, string> = {
   python3: 'interpréteur : code non analysable',
   node: 'interpréteur : code non analysable',
   perl: 'interpréteur : code non analysable',
+  ruby: 'interpréteur : code non analysable',
+  php: 'interpréteur : code non analysable',
+  dash: 'shell : code non analysable',
+  fish: 'shell : code non analysable',
+  ksh: 'shell : code non analysable',
+  source: 'code non analysable',
 };
 
 const startsWith = (argv: readonly string[], prefix: readonly string[]) =>
@@ -156,6 +241,17 @@ const NEVER_SUB: { rule: string; why: string; match: (argv: readonly string[]) =
     why: 'suppression de fichiers',
     match: (a) => a[0] === 'git' && a[1] === 'clean',
   },
+  {
+    rule: 'find_exec',
+    why: 'find qui supprime ou exécute',
+    match: (a) =>
+      a[0] === 'find' && a.some((x) => /^-(delete|exec|execdir|ok|okdir|fprint)/.test(x)),
+  },
+  {
+    rule: 'truncate',
+    why: 'vidage de fichiers',
+    match: (a) => a[0] === 'truncate',
+  },
 ];
 
 /**
@@ -164,14 +260,23 @@ const NEVER_SUB: { rule: string; why: string; match: (argv: readonly string[]) =
  */
 export function classifyRemote(server: OpsServer, argv: readonly string[]): Classification {
   const [name = ''] = argv;
+  if (argv.some((a) => /[\0\n\r]/.test(a))) return forbid('ops.invalid', 'caractère interdit');
+  if (/=/.test(name) || !/^[A-Za-z0-9_./+-]+$/.test(name))
+    return forbid(
+      'ops.invalid_program',
+      'le premier mot doit être un programme (pas d’affectation)',
+    );
   const base = name.split('/').pop() ?? '';
+  if (WRAPPERS.has(base))
+    return forbid(`ops.deny.wrapper`, `${base} lance un autre programme : appelle-le directement`);
+  if (NETWORK.has(base))
+    return forbid(`ops.deny.network`, `${base} : sortie ou entrée de données réseau`);
   const never = NEVER[base] ?? (base.startsWith('mkfs') ? NEVER.mkfs : undefined);
   if (never) return forbid(`ops.deny.${base}`, `${base} : ${never}`);
   for (const r of NEVER_SUB) if (r.match(argv)) return forbid(`ops.deny.${r.rule}`, r.why);
-  if (argv.some((a) => /[\0\n\r]/.test(a))) return forbid('ops.invalid', 'caractère interdit');
-  const reads =
-    READ_ONLY.some((p) => startsWith(argv, p)) && !argv.some((a) => WRITE_FLAGS.test(a));
-  if (reads) return { level: N0, rule: 'ops.read', reason: `lecture sur ${server.id}` };
+  const read = READ_ONLY.find((r) => startsWith(argv, r.prefix));
+  if (read?.rest(argv.slice(read.prefix.length)))
+    return { level: N0, rule: 'ops.read', reason: `lecture sur ${server.id}` };
   return server.env === 'prod'
     ? { level: N3, rule: 'ops.exec.prod', reason: `modifie le serveur de production ${server.id}` }
     : {

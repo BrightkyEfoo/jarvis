@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.20.0 — Figma gratuit (03/10/2026)
+## 0.20.1 — Correctifs de la relecture de sécurité (03/10/2026)
+
+### Corrigé
+- **Lectures distantes (N0) trop larges** : une règle exacte par commande, et non plus un préfixe.
+  - Ne sont plus des lectures, donc passent par validation et PIN en prod : `journalctl
+    --vacuum/--rotate/--flush…`, `hostname <nom>`, `ps e…` (environnement), `nginx` avec autre
+    chose que `-t`, `git log --ext-diff/--textconv`, `--kubeconfig`.
+  - Retirés des lectures car ils affichent des secrets : `kubectl get` et `docker inspect`.
+- **Contournements de la liste « jamais »** :
+  - une affectation en tête (`X=1 rm …`) est refusée, et `=` est toujours échappé ;
+  - les enrobages (`env`, `nice`, `timeout`, `xargs`, `nohup`, `command`, `exec`, `busybox`…), les
+    clients réseau (`ssh`, `scp`, `rsync`, `nc`, `socat`…), `find -delete/-exec`, `truncate` et
+    d'autres interpréteurs sont refusés.
+- **Captures** : une fenêtre dont le titre montre de l'argent ou des identifiants (banque, mobile
+  money, portefeuille, gestionnaire de mots de passe) n'est jamais capturée, ni seule ni dans
+  l'image d'un écran entier.
+
 
 ### Ajouté
 - **Figma, gratuit et sans quota** : un plugin de développement (`apps/figma-plugin/`), chargé
