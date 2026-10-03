@@ -1,5 +1,5 @@
 import type { FetchFn } from '../google/oauth.ts';
-import { HttpJson } from './http.ts';
+import { HttpError, HttpJson } from './http.ts';
 import {
   budgetPatches,
   type ChangeDetail,
@@ -454,5 +454,35 @@ export class GitLabClient implements ForgeClient {
     );
     const page = await this.#http.get<{ web_url: string }>(`/projects/${id}/${kindPath}/${number}`);
     return { url: `${page.web_url}#note_${r.data.id}` };
+  }
+
+  /**
+   * Creates or replaces a CI/CD variable. Masked when GitLab can mask the value (one line, 8+
+   * characters of its alphabet); a multi-line value (an SSH key) becomes a "file" variable.
+   */
+  async setVariable(
+    repo: string,
+    key: string,
+    value: string,
+    o: { protected: boolean },
+  ): Promise<void> {
+    const id = project(repo);
+    const file = value.includes('\n');
+    const body = {
+      key,
+      value: file && !value.endsWith('\n') ? `${value}\n` : value,
+      protected: o.protected,
+      masked: !file && /^[A-Za-z0-9+/=@:.~_-]{8,}$/.test(value),
+      raw: true,
+      variable_type: file ? 'file' : 'env_var',
+    };
+    try {
+      await this.#http.request('POST', `/projects/${id}/variables`, { body });
+    } catch (e) {
+      if (!(e instanceof HttpError) || e.status !== 400) throw e;
+      await this.#http.request('PUT', `/projects/${id}/variables/${encodeURIComponent(key)}`, {
+        body,
+      });
+    }
   }
 }

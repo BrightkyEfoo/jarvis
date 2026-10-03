@@ -17,6 +17,10 @@ export const SecretName = {
   gitlabToken: 'gitlab.token',
   trelloKey: 'trello.key',
   trelloToken: 'trello.token',
+  /** Values Brightky puts in Jarvis's vault (jarvis vault set): deploy tokens, CI secrets… */
+  vault: (name: string) => `vault.${name}`,
+  /** Names in the vault (the Keychain cannot list them). */
+  vaultIndex: 'vault.index',
 } as const;
 
 export interface SecretStore {

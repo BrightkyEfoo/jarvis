@@ -26,6 +26,7 @@ n'importe quelle app, sans jamais toucher aux paiements ni aux mots de passe. Il
 
 Détails : [docs/SECURITY.md](docs/SECURITY.md) · décisions : [docs/DECISIONS.md](docs/DECISIONS.md)
 · historique : [docs/CHANGELOG.md](docs/CHANGELOG.md)
+· serveurs et déploiements : [docs/SETUP-OPS.md](docs/SETUP-OPS.md)
 
 ## Installation (une fois)
 

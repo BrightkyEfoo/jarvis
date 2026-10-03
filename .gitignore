@@ -24,3 +24,6 @@ config/policy.yaml
 # Deep-research notes and reports (local)
 research_notes/
 reports/
+
+# Claude Code local state (agent worktrees)
+.claude/worktrees/

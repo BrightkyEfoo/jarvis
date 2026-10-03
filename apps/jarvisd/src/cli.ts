@@ -452,6 +452,41 @@ async function forgeConnect(forge: 'github' | 'gitlab' | 'trello', args: string[
   }
 }
 
+/**
+ * `jarvis vault set|list|rm`: values for deployments and CI secrets (Coolify token, database
+ * password…). Typed hidden, kept in the Keychain; Jarvis's tools use them by name and never show them.
+ */
+async function vaultCommand(sub: string | undefined, name: string | undefined): Promise<void> {
+  const { KeychainStore, Redactor } = await import('@jarvis/secrets');
+  const { Vault } = await import('./ops/vault.ts');
+  const vault = new Vault(new KeychainStore(), new Redactor());
+  try {
+    if (sub === 'list') {
+      const names = vault.names();
+      console.log(names.length ? names.join('\n') : dim('(coffre vide)'));
+    } else if (sub === 'set' && name) {
+      const value = await askHidden(`Valeur de « ${name} » : `);
+      if (!value) return;
+      vault.set(name, value);
+      console.log(
+        `✔ « ${name} » rangé dans le coffre (Trousseau). Jarvis l'utilise par son nom, sans jamais l'afficher.`,
+      );
+    } else if (sub === 'rm' && name) {
+      console.log(
+        vault.delete(name)
+          ? `✔ « ${name} » supprimé du coffre.`
+          : `« ${name} » n'était pas dans le coffre.`,
+      );
+    } else {
+      console.error('usage : jarvis vault set <nom> | list | rm <nom>');
+      process.exitCode = 1;
+    }
+  } catch (e) {
+    console.error(red(`✖ ${(e as Error).message}`));
+    process.exitCode = 1;
+  }
+}
+
 /** Opens the dashboard window of Jarvis.app (launching the app if needed). */
 async function dashboardCommand(): Promise<void> {
   const { execFileSync } = await import('node:child_process');
@@ -543,6 +578,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis daemon [--dev]        lancer le daemon (--dev : policy non scellée, N3 désactivé)
   jarvis auth set-token        enregistrer le token d'abonnement (claude setup-token)
   jarvis pin set               définir / changer le PIN N3
+  jarvis vault set <nom> | list | rm <nom>   coffre (Trousseau) : jetons de déploiement, secrets de CI…
   jarvis policy check <file>   valider un fichier de policy (schéma, YAML)
   jarvis policy verify         vérifier le sceau de la policy
   jarvis policy record-hash    enregistrer le hash de la policy scellée (utilisé par seal-policy.sh)
@@ -783,6 +819,8 @@ async function main(argv: string[]): Promise<void> {
         return;
       }
       return forgeConnect(cmd, rest.slice(1));
+    case 'vault':
+      return vaultCommand(rest[0], rest[1]);
     case 'auth':
     case 'pin':
     case 'policy':

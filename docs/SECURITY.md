@@ -223,6 +223,40 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   demandent deux clics, pour éviter un arrêt par erreur (la reprise exige le PIN). ⌃⎋ reste
   immédiat. La raison enregistrée dit d'où vient l'arrêt.
 
+## Serveurs et déploiements (ADR-033)
+
+- **Périmètre** : seulement les serveurs et apps de la politique **scellée**. Un serveur inconnu
+  vaut N4.
+- **SSH** : `/usr/bin/ssh` sans shell local, `BatchMode=yes` (pas de saisie de mot de passe),
+  `StrictHostKeyChecking=yes`. Un serveur absent de `known_hosts` ou dont la clé a changé est
+  refusé. Les clés restent l'affaire de `ssh` : Jarvis ne lit jamais `~/.ssh`.
+  - Chaque argument est échappé : le serveur exécute exactement l'argv validé, sans injection.
+  - Environnement réduit au minimum : HOME, agent SSH, PATH.
+- **Niveaux** :
+  - N0 : lectures d'une liste fixe, sans les options qui écrivent ou suivent en continu
+    (`--output`, `-f`).
+  - N3 (PIN, session non teintée) : tout changement en prod.
+  - N2 : tout changement en staging ou en dev.
+  - N4 : `rm`, `sudo` et autres élévations, `curl`/`wget`, shells et interpréteurs, comptes, droits,
+    pare-feu, arrêt du serveur, suppression de données Docker, Kubernetes ou Terraform, réécriture
+    git.
+
+  Le travail privilégié passe par les scripts que Brightky a déclarés.
+- **Logs = contenu externe** : la session est teintée. Un log piégé ne peut donc pas déclencher
+  de déploiement en prod.
+- **Coffre** : valeurs au Trousseau. Le modèle ne voit que les noms. Une valeur lue est déclarée au
+  filtre de masquage avant tout usage, et n'apparaît ni dans les sorties ni dans l'audit.
+- **Secrets de CI** : N3. GitHub via `gh secret set`, la valeur passant par stdin, jamais en argv
+  (les tokens fine-grained de Jarvis n'ont pas le droit d'écrire des secrets). GitLab via l'API :
+  variables protégées, masquées quand c'est possible.
+- **Clé de déploiement** : générée pour une seule app.
+  - Sur le serveur, `restrict,command=` limite la clé au script de déploiement : pas de shell, pas
+    de transfert de ports.
+  - La clé privée existe sur le disque quelques millisecondes (dossier temporaire 0700), puis
+    seulement dans les secrets du dépôt.
+  - Les workers ne touchent jamais au workflow : Brightky le relit et le pousse.
+- **Coolify** : HTTPS seulement, jeton lu dans le coffre, aucune redirection suivie.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

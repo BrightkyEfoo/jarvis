@@ -171,3 +171,24 @@ calendar:
   # Unset: the calendars of every connected Gmail account are merged. Set an account id to pin one.
   # google_account: perso
   {}
+
+# Serveurs et déploiements (ADR-033). Jarvis n'atteint que ce qui est déclaré ici : la politique est
+# scellée, il ne peut pas s'ajouter un serveur. SSH utilise tes clés ou ton agent (Jarvis ne lit
+# jamais ~/.ssh) et le serveur doit déjà être dans known_hosts (connecte-toi une fois à la main).
+# Production : déployer ou modifier demande ton PIN ; staging/dev : une confirmation.
+ops:
+  servers: []
+  #  - id: bb-srv
+  #    host: bb-srv            # nom d'hôte ou alias de ~/.ssh/config
+  #    user: deploy
+  #    port: 22
+  #    env: prod
+  #    apps:
+  #      - id: portfolio
+  #        repo: BrightkyEfoo/portfolio_v3
+  #        forge: github
+  #        deploy: [/srv/portfolio/deploy.sh]          # tu l'as écrit : sudo, compose… y sont permis
+  #        logs: [docker, compose, -f, /srv/portfolio/compose.yml, logs, --tail, "200"]
+  #      - id: dala
+  #        coolify: { url: "https://coolify.exemple.cm", uuid: "abcd1234", token_vault: coolify }
+  deploy_timeout_sec: 900

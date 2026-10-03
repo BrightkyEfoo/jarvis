@@ -54,6 +54,53 @@ const MailAccount = z.discriminatedUnion('type', [
     .strict(),
 ]);
 
+const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, 'lowercase id: letters, digits, dashes');
+/** One argv word run on a server: printable, no NUL or newline. */
+const RemoteArg = z
+  .string()
+  .min(1)
+  .max(1000)
+  .regex(/^[^\0\n\r]+$/);
+
+const OpsApp = z
+  .object({
+    id: Slug,
+    /** owner/repo (or group/project) of the app, for deploy keys and repository secrets. */
+    repo: z.string().max(200).optional(),
+    forge: z.enum(['github', 'gitlab']).prefault('github'),
+    /** argv run on the server to deploy (Brightky wrote it: may use sudo, a script, compose…). */
+    deploy: z.array(RemoteArg).min(1).max(40).optional(),
+    /** argv that prints the app's recent logs (read-only). */
+    logs: z.array(RemoteArg).min(1).max(40).optional(),
+    /** Coolify instead of SSH: the deploy webhook of this application. */
+    coolify: z
+      .object({
+        url: z.url({ protocol: /^https$/ }),
+        uuid: z.string().regex(/^[A-Za-z0-9-]{4,64}$/),
+        /** Vault entry holding the Coolify API token (jarvis vault set). */
+        token_vault: z.string().regex(/^[a-z0-9_.-]{1,40}$/),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const OpsServer = z
+  .object({
+    id: Slug,
+    /** Host name or an alias of ~/.ssh/config: ssh resolves it with Brightky's keys or agent. */
+    host: z.string().regex(/^[A-Za-z0-9._-]{1,253}$/),
+    user: z
+      .string()
+      .regex(/^[a-z_][a-z0-9_-]{0,31}$/)
+      .optional(),
+    port: z.number().int().min(1).max(65535).optional(),
+    /** prod: anything that changes the server needs the PIN (N3); staging/dev: a confirmation (N2). */
+    env: z.enum(['prod', 'staging', 'dev']).prefault('prod'),
+    apps: z.array(OpsApp).prefault([]),
+  })
+  .strict();
+
 export const PolicySchema = z
   .object({
     version: z.literal(1),
@@ -213,6 +260,15 @@ export const PolicySchema = z
         /** Extra off-limits sites / apps, on top of the built-in lists. */
         forbidden_domains: z.array(z.string()).prefault([]),
         forbidden_apps: z.array(z.string()).prefault([]),
+      })
+      .strict()
+      .prefault({}),
+    /** Servers Jarvis may reach over SSH and the apps it may deploy (sealed: Jarvis cannot add one). */
+    ops: z
+      .object({
+        servers: z.array(OpsServer).prefault([]),
+        /** Seconds a deploy may run. */
+        deploy_timeout_sec: z.number().int().min(30).max(3600).prefault(900),
       })
       .strict()
       .prefault({}),

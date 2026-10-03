@@ -31,6 +31,9 @@ import {
 } from '@jarvis/policy';
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import { type Actuator, ActuatorBridge } from '../computer/bridge.ts';
+import { ed25519KeyPair, ForgeSecrets, knownHostsFor } from '../ops/secrets.ts';
+import { OpenSsh } from '../ops/ssh.ts';
+import { Vault } from '../ops/vault.ts';
 import type { Brain } from '../orchestrator/brain.ts';
 import { ClaudeBrain } from '../orchestrator/claude.ts';
 import {
@@ -47,6 +50,7 @@ import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
+import { createOpsTools, type OpsToolDeps } from '../tools/ops.ts';
 import { createResearchTools, type YouTube, YtDlp } from '../tools/research.ts';
 import { createTrelloWorkerTools, trelloFollowUp } from '../tools/trello-workers.ts';
 import { createWorkerTools } from '../tools/workers.ts';
@@ -90,6 +94,8 @@ export interface RuntimeOptions {
   workerRunner?: WorkerRunner;
   /** Tests inject fake forges; production builds them from the Keychain tokens. */
   forges?: { forges: Map<ForgeId, ForgeClient>; trello: TrelloClient | null };
+  /** Tests inject fake SSH, CI secrets and key generation; production uses ssh, gh and the GitLab API. */
+  ops?: Partial<Pick<OpsToolDeps, 'ssh' | 'secrets' | 'keyPair' | 'knownHosts' | 'fetch'>>;
 }
 
 export type Activity =
@@ -393,6 +399,24 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   for (const t of createComputerTools({ policy, actuator })) gate.register(t);
 
   for (const t of createForgeTools({ ...forges, maxDiffChars: policy.forges.max_diff_chars }))
+    gate.register(t);
+
+  // Servers and deployments (ADR-033): only what the sealed policy declares.
+  for (const t of createOpsTools({
+    policy,
+    redactor,
+    vault: new Vault(o.secrets, redactor),
+    ssh: o.ops?.ssh ?? new OpenSsh(),
+    secrets:
+      o.ops?.secrets ??
+      new ForgeSecrets(() => {
+        const gl = forges.forges.get('gitlab');
+        return gl instanceof GitLabClient ? gl : null;
+      }),
+    keyPair: o.ops?.keyPair ?? ed25519KeyPair,
+    knownHosts: o.ops?.knownHosts ?? knownHostsFor,
+    ...(o.ops?.fetch && { fetch: o.ops.fetch }),
+  }))
     gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 

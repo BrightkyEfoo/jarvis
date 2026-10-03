@@ -878,3 +878,38 @@ s'est déplacé vers la relecture, et le bruit est la première cause d'abandon 
 
 **À venir** : quand Brightky juge un commentaire inutile, en faire une règle dans le CLAUDE.md du
 dépôt, et afficher la file dans le brief du matin.
+
+## ADR-033 — Serveurs, déploiements et secrets de CI (03/10/2026)
+
+**Demande de Brightky** : « Jarvis doit pouvoir configurer les secrets sur un repo pour qu'il déploie
+sur un serveur, se connecter sur un serveur pour faire un déploiement… »
+
+**Contexte** : c'est le chantier le plus risqué de tous, celui de la production et des
+identifiants. Les incidents de 2026 du rapport « Jarvis pour les équipes tech » le montrent :
+`terraform destroy` sur la prod, injection par les logs, faux mode lecture seule.
+
+**Décision** :
+- **Périmètre déclaré par Brightky** dans la politique scellée (`ops.servers`) : serveurs,
+  environnements, et pour chaque app le déploiement (argv distant ou webhook Coolify) et la commande
+  de logs. Jarvis ne peut rien ajouter.
+- **SSH sans compromis** : clés ou agent de Brightky lus par `ssh` seul, `BatchMode`,
+  `StrictHostKeyChecking=yes`, argv échappé mot à mot, environnement minimal.
+- **Niveaux par environnement** :
+  - N0 : lectures d'une liste fixe.
+  - Changements : N3 en prod (PIN, et refus si la session a lu un contenu externe), N2 ailleurs.
+  - N4 : ce qui détruit des données, modifie des accès ou exécute du code illisible. Le travail
+    privilégié passe par les scripts que Brightky a écrits et déclarés.
+- **Les valeurs secrètes ne passent jamais par le modèle** : un coffre au Trousseau
+  (`jarvis vault set`), ou une génération locale. GitHub via `gh secret set` (stdin), GitLab via son
+  API. Toujours N3.
+- **CI vers serveur** : une clé par app. La clé publique est installée avec
+  `restrict,command="<déploiement>"`, donc la CI ne peut que déployer. Les secrets `DEPLOY_*` vont
+  sur le dépôt, et le workflow est fourni à relire.
+- **Les workers ne déploient pas** : ni réseau ni identifiants dans leur sandbox. C'est Jarvis qui
+  déploie, avec ses outils au périmètre fixe.
+
+**Écarté** :
+- donner un shell distant libre au modèle ;
+- écrire le workflow de CI par l'API (il faudrait la permission « workflows » sur les tokens) ;
+- stocker des clés de prod longue durée hors du Trousseau ;
+- laisser Claude Code déployer depuis un worker.

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.16.0 — Serveurs et déploiements (03/10/2026)
+
+### Ajouté
+- **Serveurs déclarés dans la politique scellée** (`ops.servers`) : hôte, utilisateur, environnement
+  (prod / staging / dev), apps avec leur commande de déploiement et de logs, ou leur webhook Coolify.
+  Jarvis ne peut pas s'ajouter un serveur.
+- **`server_run`** : une commande, en argv, par SSH, avec les clés ou l'agent de Brightky,
+  `BatchMode` et `StrictHostKeyChecking=yes`.
+  - Lectures (état, `docker ps`, `journalctl`, logs…) : directes.
+  - Le reste demande le PIN en prod et une confirmation en staging / dev.
+  - Jamais : `rm`, `sudo`, `curl`, shells, `prune`, `volume rm`, `down -v`, `kubectl delete`,
+    `terraform destroy`, `push --force`.
+- **`deploy`** : le script déclaré, ou le webhook Coolify. En prod, il faut le PIN et une
+  conversation propre. **`server_logs`** : les logs déclarés.
+- **Coffre** (`jarvis vault set|list|rm`) : jetons et mots de passe au Trousseau. Jarvis les utilise
+  par leur nom et ne les voit jamais.
+- **`repo_secret_set`** : un secret de CI (GitHub via `gh secret set` sur stdin, GitLab via l'API),
+  depuis le coffre ou généré. Toujours avec le PIN.
+- **`deploy_key_setup`** : branche la CI d'un dépôt sur un serveur.
+  - Une clé ed25519, dont la clé publique est installée sur le serveur avec
+    `restrict,command="<script de déploiement>"` : elle ne peut lancer que le déploiement.
+  - Les secrets `DEPLOY_*` sur le dépôt.
+  - Le workflow GitHub Actions à ajouter.
+- Guide : `docs/SETUP-OPS.md`.
+
 ## 0.15.0 — Jarvis Island (03/10/2026)
 
 ### Ajouté

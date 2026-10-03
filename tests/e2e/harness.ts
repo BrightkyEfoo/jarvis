@@ -31,7 +31,11 @@ import type {
 import { hashPin, sha256 } from '@jarvis/policy';
 import { MemoryStore, SecretName } from '@jarvis/secrets';
 import type { ActuatorAction } from '../../apps/jarvisd/src/computer/bridge.ts';
-import { createRuntime, type Runtime } from '../../apps/jarvisd/src/daemon/runtime.ts';
+import {
+  createRuntime,
+  type Runtime,
+  type RuntimeOptions,
+} from '../../apps/jarvisd/src/daemon/runtime.ts';
 import { startServer } from '../../apps/jarvisd/src/daemon/server.ts';
 import type { Reply } from '../../apps/jarvisd/src/ipc.ts';
 import type { Request } from '../../apps/jarvisd/src/ipc-schema.ts';
@@ -402,6 +406,8 @@ export class FakeTrello {
 }
 
 export interface Harness {
+  /** Keychain stand-in (vault values, tokens). */
+  secrets: MemoryStore;
   forge: FakeForge;
   trello: FakeTrello;
   home: string;
@@ -433,7 +439,13 @@ export interface Rpc {
 }
 
 export async function startHarness(
-  opts: { devMode?: boolean; workerRunner?: WorkerRunner } = {},
+  opts: {
+    devMode?: boolean;
+    workerRunner?: WorkerRunner;
+    /** Rewrites the example policy (e.g. to declare servers); the seal follows. */
+    policyPatch?: (yaml: string) => string;
+    ops?: RuntimeOptions['ops'];
+  } = {},
 ): Promise<Harness> {
   // Short root: macOS caps Unix socket paths at 104 bytes.
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'jv-')));
@@ -451,10 +463,15 @@ export async function startHarness(
   );
   symlinkSync(join(home, '.ssh'), join(work, 'shortcut'));
 
+  let policyPath = EXAMPLE_POLICY;
+  if (opts.policyPatch) {
+    policyPath = join(base, 'policy.yaml');
+    writeFileSync(policyPath, opts.policyPatch(readFileSync(EXAMPLE_POLICY, 'utf8')));
+  }
   const secrets = new MemoryStore();
   secrets.set(SecretName.pinHash, hashPin(PIN));
   secrets.set(SecretName.claudeOauthToken, CANARY_TOKEN);
-  secrets.set(SecretName.policySha256, sha256(readFileSync(EXAMPLE_POLICY)));
+  secrets.set(SecretName.policySha256, sha256(readFileSync(policyPath)));
 
   const paths = appPaths(join(base, 'j'));
   const mac = new FakeMac();
@@ -468,7 +485,7 @@ export async function startHarness(
     forges: { forges: new Map([['github', forge]]), trello: trello as unknown as TrelloClient },
     paths,
     home,
-    policyPath: EXAMPLE_POLICY,
+    policyPath,
     secrets,
     devMode: opts.devMode ?? false,
     requireSealed: false,
@@ -484,6 +501,7 @@ export async function startHarness(
     },
     research: { researcher, youtube: new FakeYouTube() },
     ...(opts.workerRunner && { workerRunner: opts.workerRunner }),
+    ...(opts.ops && { ops: opts.ops }),
   });
   const server = await startServer(rt, paths.socket);
 
@@ -536,6 +554,7 @@ export async function startHarness(
   };
 
   return {
+    secrets,
     forge,
     trello,
     home,
