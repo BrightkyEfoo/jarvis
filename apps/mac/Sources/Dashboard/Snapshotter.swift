@@ -31,8 +31,40 @@ enum Snapshotter {
         show(MenuView().environmentObject(store).fixedSize().background(.regularMaterial), size: NSSize(width: 340, height: 460))
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             save(to: "\(directory)/9-menu.png")
+            renderIslands(store: store, directory: directory, index: 0)
+        }
+    }
+
+    /// The island in each of its states, over a wallpaper-like backdrop.
+    private static var demoApprovals: [Approval] = []
+
+    private static func renderIslands(store: Store, directory: String, index: Int) {
+        if index == 0 { demoApprovals = store.approvals }
+        let approvals = demoApprovals
+        let scenes: [(String, (Store) -> Void)] = [
+            ("listening", { $0.approvals = []; $0.voice = .listening; $0.heard = "Bon, Jarvis, qu'est-ce que j'ai à relire ce matin ?" }),
+            ("thinking", { $0.voice = .thinking; $0.activity = "Outil : review_queue" }),
+            ("speaking", { $0.voice = .speaking; $0.said = "Trois PR t'attendent. La plus ancienne touche les migrations." }),
+            ("acting", { $0.voice = .idle; $0.acting = "Arc" }),
+            ("approval", { $0.acting = nil; $0.approvals = approvals }),
+            ("approval-pin", { $0.approvals = Array(approvals.dropFirst()) }),
+            ("workers", { $0.approvals = []; $0.thinking = false }),
+            ("stopped", { $0.status?.stop = "STOP (barre de menus)" }),
+        ]
+        guard index < scenes.count else {
             print("✔ snapshots in \(directory)")
             exit(0)
+        }
+        let (name, apply) = scenes[index]
+        apply(store)
+        let island = IslandView(notch: CGSize(width: 185, height: 32), onStop: {}, onSize: { _ in })
+            .environmentObject(store)
+        let backdrop = LinearGradient(colors: [Color(red: 0.16, green: 0.32, blue: 0.62), Color(red: 0.93, green: 0.55, blue: 0.36)],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing)
+        show(ZStack(alignment: .top) { backdrop; island }.frame(width: 560, height: 220), size: NSSize(width: 560, height: 220))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            save(to: "\(directory)/island-\(index + 1)-\(name).png")
+            renderIslands(store: store, directory: directory, index: index + 1)
         }
     }
 

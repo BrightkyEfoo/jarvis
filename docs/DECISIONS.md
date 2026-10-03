@@ -816,3 +816,35 @@ protégée (identifiant de bundle), même sur ordre du daemon.
 
 **Écarté** : la fermeture forcée (perte de travail), et les clics à l'échelle de l'écran entier.
 Le contrôle « ce qui est réellement sous le pointeur » reste fait app par app.
+
+
+## ADR-031 — L'île Jarvis (03/10/2026)
+
+**Contexte** : la recherche « Jarvis pour les équipes tech » (rapport local, proposition 6) et les
+visuels de référence (Vibe Island, Wispr Flow, « Search or Ask » de macOS) convergent. Une
+interface vocale de bureau réussie est discrète, montre ce qu'elle entend et ce qu'elle fait,
+et garde toujours le STOP à portée de main.
+
+**Décision** :
+- **Le panneau** : un `NSPanel` non activant, au-dessus de la barre de menus (niveau `mainMenu + 3`),
+  sur tous les bureaux. Il est collé au bord haut sous une encoche, juste sous la barre de menus
+  sinon.
+  - Sa taille suit exactement le contenu SwiftUI (préférence de taille), donc aucune zone
+    transparente ne capte les clics.
+  - Masqué au repos.
+- **Un seul état affiché**, par priorité : STOP, validation, action sur le Mac, écoute, réflexion,
+  parole, workers. Cette priorité est une fonction pure (`IslandMode.from`), testée.
+- **Les niveaux audio sont réels** : RMS du micro (oreille mains libres, écoute par touche) et de
+  la sortie de PocketTTS (tap sur le mixeur), lus à 30 images par seconde. Seul un nombre est
+  gardé, jamais l'audio. Le réglage Réduire les animations est respecté.
+- **Les validations ne changent pas de niveau** : l'île est une surface de plus pour N2 et N3, au
+  même titre que le tableau de bord et la voix. N3 demande le PIN et reste refusé dans une session
+  teintée, comme ailleurs.
+- **Le STOP de l'île est en un clic**, parce qu'il n'apparaît que lorsque Jarvis pilote une app.
+  Il annule l'action en cours (`cancelAll`) et enclenche STOP avec la source « île Jarvis ».
+  Les autres boutons STOP restent en deux clics.
+
+**Écarté** :
+- le HUD plein écran façon Iron Man et l'orbe 3D permanent (coût GPU, distraction) ;
+- Liquid Glass : le Mac est sous macOS 15, d'où un noir opaque, lisible sur tous les fonds ;
+- l'île au survol de l'encoche au repos, à revoir si le besoin se confirme.

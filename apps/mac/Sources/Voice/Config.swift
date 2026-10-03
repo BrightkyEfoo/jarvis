@@ -13,6 +13,8 @@ struct VoiceConfig {
     var engine = "neural"
     /// Hands-free: say "Jarvis, …" (microphone open, everything local).
     var wake = true
+    /// The island under the notch (states, approvals, workers, quota).
+    var island = true
     /// Playback speed of the neural voices (pitch kept): 1 = as generated.
     var speed: Float = 1.15
     var frNeural = VoiceCatalog.defaults["fr"] ?? "henri"
@@ -31,6 +33,7 @@ struct VoiceConfig {
         var json = (FileManager.default.contents(atPath: path).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
         json["engine"] = engine
         json["wake"] = wake
+        json["island"] = island
         json["speed"] = Double((speed * 100).rounded() / 100)
         json["frNeural"] = frNeural
         json["enNeural"] = enNeural
@@ -51,6 +54,7 @@ struct VoiceConfig {
         if let v = json["rate"] as? Double { c.rate = Float(min(max(v, 0.3), 0.7)) }
         if let v = json["engine"] as? String, ["neural", "system"].contains(v) { c.engine = v }
         if let v = json["wake"] as? Bool { c.wake = v }
+        if let v = json["island"] as? Bool { c.island = v }
         if let v = json["speed"] as? Double { c.speed = Float(min(max(v, 0.8), 1.6)) }
         if let v = json["frNeural"] as? String { c.frNeural = v }
         if let v = json["enNeural"] as? String { c.enNeural = v }

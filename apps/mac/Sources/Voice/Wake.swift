@@ -58,6 +58,7 @@ final class WakeWatcher: @unchecked Sendable {
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self else { return }
+            if !self.suspended { AudioMeter.shared.mic(buffer) }
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * Self.sampleRate / format.sampleRate + 64)
             guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
             var fed = false

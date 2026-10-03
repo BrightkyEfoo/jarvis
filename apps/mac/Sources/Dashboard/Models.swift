@@ -28,7 +28,7 @@ enum JSONValue: Decodable, Hashable {
 struct DaemonStatus: Decodable, Hashable {
     struct PolicyInfo: Decodable, Hashable { let sha256: String; let sealed: Bool }
     struct SessionInfo: Decodable, Hashable { let id: String; let tainted: Bool }
-    let stop: String?
+    var stop: String?
     let devMode: Bool
     let policy: PolicyInfo
     let brain: String

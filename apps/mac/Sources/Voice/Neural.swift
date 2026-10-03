@@ -142,6 +142,7 @@ final class NeuralListener: SpeechInput {
         lock.withLock { samples.removeAll(keepingCapacity: true) }
         input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { [weak self] buffer, _ in
             guard let self else { return }
+            AudioMeter.shared.mic(buffer)
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * Self.sampleRate / inFormat.sampleRate + 64)
             guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
             var fed = false
@@ -249,6 +250,8 @@ final class NeuralSpeaker: SpeechOutput, @unchecked Sendable {
         engine.connect(timePitch, to: engine.mainMixerNode, format: format)
         // Tests run silently on Brightky's Mac.
         if ProcessInfo.processInfo.environment["JARVIS_MUTE"] == "1" { engine.mainMixerNode.outputVolume = 0 }
+        // The island's bars follow Jarvis's real voice.
+        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in AudioMeter.shared.out(buffer) }
         // Started once: starting the output on the first sentence cost ~200 ms of latency.
         engine.prepare()
         try? engine.start()

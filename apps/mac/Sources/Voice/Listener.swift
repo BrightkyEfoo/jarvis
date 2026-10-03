@@ -48,6 +48,7 @@ final class Listener: SpeechInput {
         let format = input.outputFormat(forBus: 0)
         let targets = sessions
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            AudioMeter.shared.mic(buffer)
             for s in targets { s.request.append(buffer) }
         }
         for s in sessions {

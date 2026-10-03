@@ -16,6 +16,9 @@ final class Controller {
     /// Neural stack waiting for an idle moment to replace the system voices.
     private var pendingNeural: NeuralStack?
     var onEngine: (String) -> Void = { _ in }
+    /// What Brightky is saying (partials, then the final text) and what Jarvis says: the island shows them.
+    var onHeard: (String) -> Void = { _ in }
+    var onSaid: (String) -> Void = { _ in }
     private let client: JarvisClient
     private var hotKey: HotKey?
     private var state = State.idle {
@@ -100,9 +103,10 @@ final class Controller {
             }
             self.adoptNeuralIfIdle()
         }
-        listener.onPartial = { partial in
+        listener.onPartial = { [weak self] partial in
             print("\r\u{1B}[2K🎙 \(partial)", terminator: "")
             fflush(stdout)
+            self?.onHeard(partial)
         }
         onEngine("\(listener.engineName) · \(speaker.voiceNames)")
     }
@@ -271,6 +275,8 @@ final class Controller {
     private func send(_ pick: Candidate) {
         lang = pick.lang
         print("🗣 [\(pick.lang)] \(pick.text)")
+        onHeard(pick.text)
+        onSaid("")
         followUp = true
         let id = shortId()
         currentAsk = id
@@ -386,6 +392,7 @@ final class Controller {
 
     private func say(_ sentence: String) {
         recentSpeech = String((recentSpeech + " " + sentence).suffix(600))
+        onSaid(sentence)
         state = .speaking
         speaker.speak(sentence, lang: LanguagePick.replyLanguage(sentence, hint: lang))
     }

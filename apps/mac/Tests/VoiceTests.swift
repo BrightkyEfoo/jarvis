@@ -155,6 +155,20 @@ enum VoiceTests {
         ] {
             check(WakeWord.match(said) == expected, "wake: \(said)", "\(WakeWord.match(said))")
         }
+        // Island: STOP and decisions first, then hands, voice, background work.
+        let mode = { (stopped: Bool, approvals: [String], acting: String?, voice: String, thinking: Bool, workers: Int) in
+            IslandMode.from(stopped: stopped, approvalIds: approvals, acting: acting, voice: voice, thinking: thinking, activeWorkers: workers)
+        }
+        check(mode(false, [], nil, "idle", false, 0) == .hidden, "island hidden when idle")
+        check(mode(true, ["a1"], "Arc", "speaking", true, 2) == .stopped, "STOP wins")
+        check(mode(false, ["a1", "a2"], "Arc", "listening", false, 0) == .approval(id: "a1"), "approval before hands and voice")
+        check(mode(false, [], "Arc", "speaking", false, 0) == .acting(app: "Arc"), "acting before voice")
+        check(mode(false, [], nil, "transcribing", false, 0) == .listening, "transcribing is listening")
+        check(mode(false, [], nil, "idle", true, 1) == .thinking, "a turn from the terminal shows thinking")
+        check(mode(false, [], nil, "idle", false, 2) == .workers(count: 2), "workers when nothing else")
+        check(IslandMode.isActive(workerStatus: "queued") && !IslandMode.isActive(workerStatus: "done"), "active workers")
+        check(AudioMeter.level(rms: 1e-7) == 0 && AudioMeter.level(rms: 1) == 1, "meter bounds")
+        check(abs(AudioMeter.level(rms: 0.01) - 15.0 / 45.0) < 0.01, "−40 dB is a third", "\(AudioMeter.level(rms: 0.01))")
         check(WakeWord.match("Jardin fleuri ce matin") == .none, "jardin is not Jarvis")
         check(WakeWord.match("Travis est en retard") == .none, "Travis is not Jarvis")
         check(WakeWord.match("") == .none, "empty")

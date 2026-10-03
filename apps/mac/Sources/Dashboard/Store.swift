@@ -25,6 +25,9 @@ final class Store: ObservableObject {
     @Published var activity = "En veille"
     @Published var thinking = false
     @Published var voice = VoiceState.off
+    /// What Brightky just said (live while he speaks) and Jarvis's sentence being spoken.
+    @Published var heard = ""
+    @Published var said = ""
     /// App Jarvis is driving right now (browser, Notes, any app), nil when its hands are idle.
     @Published var acting: String?
     @Published var actuatorConnected = false

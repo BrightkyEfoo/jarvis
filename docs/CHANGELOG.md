@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.15.0 — Jarvis Island (03/10/2026)
+
+### Ajouté
+- **L'île Jarvis** : une capsule noire au centre de l'écran principal. Avec une encoche, elle en
+  sort ; sans encoche, elle se place sous la barre de menus. Elle n'apparaît que lorsqu'il se passe
+  quelque chose, par ordre de priorité :
+  - **STOP** : champ PIN pour reprendre sur place ;
+  - **validation en attente** : niveau N2 ou N3, résumé en français, avertissement « contenu
+    externe », boutons Refuser / Approuver (PIN pour N3), « dis oui ou non » quand la voix demande ;
+  - **Jarvis pilote une app** : point orange, et un STOP en un clic qui coupe l'action en cours ;
+  - **écoute** : barres pilotées par le vrai niveau du micro et transcription en direct ;
+  - **réflexion** : « Je consulte ton agenda… », selon l'outil en cours ;
+  - **parole** : barres pilotées par la vraie voix de Jarvis, et la phrase prononcée ;
+  - **workers en cours** : nombre, détail au clic, quota sur 5 h et 7 jours.
+- Les boutons gardent leur couleur dans un panneau qui ne prend jamais le focus. Le panneau
+  n'active pas Jarvis.app et ne vole pas le clavier, sauf pour un PIN.
+- Réglage : Tableau de bord › Réglages › Voix › « Île Jarvis sous l'encoche » (actif par défaut).
+- `--snapshot` rend aussi l'île dans ses 8 états, hors écran.
+
 ## 0.14.0 — Le bureau (02/10/2026)
 
 ### Ajouté

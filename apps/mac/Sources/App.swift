@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var controller: Controller?
     var actuator: Actuator?
     var stopKey: HotKey?
+    var island: IslandController?
     var openWindow: OpenWindowAction?
     private var pendingDashboard = false
 
@@ -70,10 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         store.start()
         startHands(enabled: !args.contains("--no-actuator"))
+        if config.island {
+            island = IslandController(store: store) { [weak self] in
+                self?.actuator?.cancelAll()
+                self?.store.stop(from: "île Jarvis")
+            }
+        }
         if !args.contains("--no-voice") {
             let c = Controller(config: config)
             c.onState = { [weak self] s in self?.store.voice = Store.VoiceState(rawValue: s) ?? .idle }
             c.onEngine = { [weak self] e in self?.store.voiceEngine = e }
+            c.onHeard = { [weak self] t in self?.store.heard = t }
+            c.onSaid = { [weak self] t in self?.store.said = t }
             c.start()
             controller = c
         }

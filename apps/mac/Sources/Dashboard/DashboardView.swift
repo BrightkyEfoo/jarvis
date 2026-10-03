@@ -598,6 +598,7 @@ struct VoicePicker: View {
                 Text("Système (Apple)").tag("system")
             }
             Toggle("Mains libres : dire « Jarvis, … » (micro ouvert, tout reste sur le Mac)", isOn: $config.wake)
+            Toggle("Île Jarvis sous l'encoche (écoute, réponses, validations, workers, quota)", isOn: $config.island)
             row("Voix française", lang: "fr", selection: $config.frNeural)
             HStack {
                 Text("Débit")
