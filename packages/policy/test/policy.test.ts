@@ -169,6 +169,35 @@ describe('loadPolicy', () => {
     expect(() => loadPolicy({ path: p, expectedSha256: null, requireSealed: false })).toThrow();
   });
 
+  it('keeps browser checks off by default and validates their ports and widths', () => {
+    expect(f.policy.workers.ui_checks).toEqual({
+      enabled: false,
+      ports: [3000, 5173, 6006],
+      widths: [375, 768, 1280],
+    });
+    const p = join(tmp, 'ui.yaml');
+    const load = (ui: string) => {
+      writeFileSync(p, `version: 1\nworkers:\n  ui_checks: ${ui}\n`);
+      return loadPolicy({ path: p, expectedSha256: null, requireSealed: false });
+    };
+    expect(load('{ enabled: true }').workers.ui_checks.ports).toEqual([3000, 5173, 6006]);
+    expect(load('{ enabled: true, ports: [4321], widths: [390] }').workers.ui_checks).toEqual({
+      enabled: true,
+      ports: [4321],
+      widths: [390],
+    });
+    for (const bad of [
+      '{ ports: [80] }',
+      '{ ports: [5432] }',
+      '{ ports: [9229] }',
+      '{ ports: [3000, 3000] }',
+      '{ ports: [] }',
+      '{ widths: [100] }',
+      '{ chrome: /tmp/evil }',
+    ])
+      expect(() => load(bad), bad).toThrow();
+  });
+
   it('refuses project folders outside the readable roots', () => {
     const p = join(tmp, 'projects.yaml');
     writeFileSync(

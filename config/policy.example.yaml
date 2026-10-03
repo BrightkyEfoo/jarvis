@@ -129,6 +129,19 @@ workers:
   max_budget_usd: 15 # anti-runaway cap per task, API-equivalent (the subscription pays)
   draft_pr: false
   dir: ~/jarvis-work/.jarvis-workers
+  # Browser checks for web frontends (React, Next.js, Vite, Storybook), ADR-036. Off by default.
+  # When on, and only when the task's repository is a web frontend, the worker starts its dev server
+  # on 127.0.0.1, takes headless screenshots with the Mac's Google Chrome (throwaway profile, files
+  # kept next to the task log, never committed) and runs Lighthouse / axe / Playwright only if the
+  # project already depends on them. Nothing is downloaded. The PR gets an "Interface vérifiée"
+  # section.
+  # RESIDUAL RISK: the macOS sandbox cannot filter loopback by port. While such a task runs, its
+  # sandboxed commands can reach EVERY service listening on this Mac's 127.0.0.1 (databases, a
+  # `node --inspect` debugger, local model servers…). Stop those, or keep this off.
+  ui_checks:
+    enabled: false
+    ports: [3000, 5173, 6006] # dev server ports the browser may open (guard rule, not a firewall)
+    widths: [375, 768, 1280] # mobile, tablet, desktop
 
 # Driving the Mac when there is no API: Brightky's browser profile, Notes, Reminders, and any app
 # through screenshots + clicks/keystrokes (done by Jarvis.app, which holds the macOS permissions).
