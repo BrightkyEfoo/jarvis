@@ -5,7 +5,9 @@ import {
   type ChangeDetail,
   type ChangeRequest,
   type ChecksState,
+  type CiFailure,
   type Comment,
+  cleanLog,
   type ForgeClient,
   type ForgeInbox,
   type Issue,
@@ -52,6 +54,15 @@ interface GhPull {
   review_comments: number;
   head: { ref: string; sha: string };
   base: { ref: string; repo: { full_name: string } };
+}
+interface GhCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url?: string;
+  app?: { slug: string } | null;
+  output?: { summary?: string | null; annotations_count?: number } | null;
 }
 interface GhFile {
   filename: string;
@@ -223,6 +234,62 @@ export class GitHubClient implements ForgeClient {
       source: pr.head.ref,
       target: pr.base.ref,
     };
+  }
+
+  async ciFailures(
+    repo: string,
+    target: { number?: number; ref?: string },
+    tailChars: number,
+  ): Promise<CiFailure[]> {
+    checkRepo(repo);
+    const api = this.#for(repo);
+    const sha =
+      target.number !== undefined
+        ? (await api.get<GhPull>(`/repos/${repo}/pulls/${target.number}`)).head.sha
+        : (
+            await api.get<{ sha: string }>(
+              `/repos/${repo}/commits/${encodeURIComponent(target.ref ?? 'HEAD')}`,
+            )
+          ).sha;
+    const { check_runs } = await api.get<{ check_runs: GhCheckRun[] }>(
+      `/repos/${repo}/commits/${sha}/check-runs`,
+      { per_page: 100, filter: 'latest' },
+    );
+    const failed = check_runs.filter((r) =>
+      ['failure', 'timed_out', 'startup_failure', 'action_required'].includes(r.conclusion ?? ''),
+    );
+    // The first three failures explain the rest; logs only for the first two (data is metered).
+    return Promise.all(
+      failed.slice(0, 3).map(async (r, i): Promise<CiFailure> => {
+        const annotations = r.output?.annotations_count
+          ? await api
+              .get<
+                { path: string; start_line?: number; message: string; annotation_level: string }[]
+              >(`/repos/${repo}/check-runs/${r.id}/annotations`, { per_page: 20 })
+              .catch(() => [])
+          : [];
+        const isActions = r.app?.slug === 'github-actions';
+        const log =
+          isActions && i < 2
+            ? await api
+                .textTail(`/repos/${repo}/actions/jobs/${r.id}/logs`, tailChars)
+                .catch(() => '')
+            : '';
+        return {
+          name: r.name,
+          ...(r.html_url && { url: r.html_url }),
+          ...(r.output?.summary && { summary: r.output.summary.slice(0, 2000) }),
+          annotations: annotations
+            .filter((a) => a.annotation_level !== 'notice')
+            .map((a) => ({
+              path: a.path,
+              ...(a.start_line && { line: a.start_line }),
+              message: a.message.slice(0, 500),
+            })),
+          ...(log && { logTail: cleanLog(log) }),
+        };
+      }),
+    );
   }
 
   async reviewFacts(repo: string, number: number): Promise<ReviewFacts> {

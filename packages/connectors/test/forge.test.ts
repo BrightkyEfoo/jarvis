@@ -196,6 +196,123 @@ describe('GitHub', () => {
   });
 });
 
+describe('CI failures', () => {
+  /** Routes by full URL; records the headers of every call. */
+  function routed(routes: Record<string, () => Response>) {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    const fn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      calls.push({
+        url: url.href,
+        headers: { ...((init?.headers ?? {}) as Record<string, string>) },
+      });
+      const key = url.origin + url.pathname;
+      const r = routes[key];
+      return r ? r() : new Response('{"message":"not found"}', { status: 404 });
+    }) as typeof fetch;
+    return { fn, calls };
+  }
+  const json = (v: unknown) => () => new Response(JSON.stringify(v), { status: 200 });
+
+  it('GitHub: failed checks, annotations, log tail — the signed log URL never gets the token', async () => {
+    const api = 'https://api.github.com/repos/acme/app';
+    const { fn, calls } = routed({
+      [`${api}/pulls/7`]: json({ head: { sha: 'abc' } }),
+      [`${api}/commits/abc/check-runs`]: json({
+        check_runs: [
+          {
+            id: 11,
+            name: 'test',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://github.com/acme/app/runs/11',
+            app: { slug: 'github-actions' },
+            output: { summary: '2 tests failed', annotations_count: 1 },
+          },
+          {
+            id: 12,
+            name: 'lint',
+            status: 'completed',
+            conclusion: 'success',
+            app: { slug: 'github-actions' },
+          },
+        ],
+      }),
+      [`${api}/check-runs/11/annotations`]: json([
+        { path: 'src/a.ts', start_line: 3, message: 'Expected 30', annotation_level: 'failure' },
+        { path: 'x', message: 'fyi', annotation_level: 'notice' },
+      ]),
+      [`${api}/actions/jobs/11/logs`]: () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: 'https://pipelines.actions.githubusercontent.com/logs/11?sig=s' },
+        }),
+      'https://pipelines.actions.githubusercontent.com/logs/11': () =>
+        new Response(
+          '2026-10-03T00:00:01.0000000Z setup\n2026-10-03T00:00:02.0000000Z \x1b[31mFAIL\x1b[0m src/a.test.ts\n',
+          { status: 200 },
+        ),
+    });
+    const [f, ...rest] = await new GitHubClient({ token: () => TOKEN, fetch: fn }).ciFailures(
+      'acme/app',
+      { number: 7 },
+      1000,
+    );
+    expect(rest).toHaveLength(0);
+    expect(f).toEqual({
+      name: 'test',
+      url: 'https://github.com/acme/app/runs/11',
+      summary: '2 tests failed',
+      annotations: [{ path: 'src/a.ts', line: 3, message: 'Expected 30' }],
+      logTail: 'setup\nFAIL src/a.test.ts',
+    });
+    const download = calls.find((c) => c.url.startsWith('https://pipelines.'));
+    expect(JSON.stringify(download?.headers)).not.toContain(TOKEN);
+    expect(Object.keys(download?.headers ?? {}).map((k) => k.toLowerCase())).not.toContain(
+      'authorization',
+    );
+  });
+
+  it('GitLab: failed jobs of the MR pipeline (allowed failures ignored), with their trace', async () => {
+    const api = 'https://git.example.cm/api/v4/projects/team%2Fapp';
+    const { fn, calls } = routed({
+      [`${api}/merge_requests/5`]: json({ head_pipeline: { id: 99, status: 'failed' } }),
+      [`${api}/pipelines/99/jobs`]: json([
+        {
+          id: 1,
+          name: 'lint',
+          stage: 'test',
+          status: 'failed',
+          web_url: 'https://git.example.cm/j/1',
+          allow_failure: true,
+        },
+        {
+          id: 2,
+          name: 'unit',
+          stage: 'test',
+          status: 'failed',
+          web_url: 'https://git.example.cm/j/2',
+        },
+      ]),
+      [`${api}/jobs/2/trace`]: () => new Response('$ pnpm test\nError: boom\n', { status: 200 }),
+    });
+    const gl = new GitLabClient({
+      token: () => 'glpat-SECRET',
+      base: 'https://git.example.cm',
+      fetch: fn,
+    });
+    expect(await gl.ciFailures('team/app', { number: 5 }, 1000)).toEqual([
+      {
+        name: 'test › unit',
+        url: 'https://git.example.cm/j/2',
+        annotations: [],
+        logTail: '$ pnpm test\nError: boom',
+      },
+    ]);
+    expect(calls.some((c) => c.url.includes('/jobs/1/trace'))).toBe(false);
+  });
+});
+
 describe('GitHub with one token per owner', () => {
   it('uses the organisation token for its repos and searches with every token', async () => {
     const { fn, calls } = fakeFetch({

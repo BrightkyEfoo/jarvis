@@ -172,6 +172,12 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   par dépôt est possible, jamais après un contenu externe.
 - **Merge** : jamais automatique (ADR-023).
 
+- **Logs de CI** (`ci_failure`) : ce sont des données externes (risque LogJack : des commandes
+  cachées dans un log). La session est teintée, donc N3 est refusé ensuite, et un worker lancé
+  depuis cette session reçoit une tâche encadrée comme externe. Une redirection vers un autre hôte
+  (URL signée de GitHub) est suivie sans aucun en-tête d'authentification. Le téléchargement est
+  plafonné.
+
 ## Pilotage du Mac (navigateur, apps, écran)
 
 - **Qui tient les autorisations** : Jarvis.app seule (Accessibilité, Enregistrement de l'écran,

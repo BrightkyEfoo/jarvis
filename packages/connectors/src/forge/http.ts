@@ -84,6 +84,52 @@ export class HttpJson {
     return (await this.request<T>('GET', path, { query })).data;
   }
 
+  /**
+   * The end of a plain-text resource (a CI log: the error is at the end). A redirect to another host
+   * (GitHub's signed download URL) is followed *without* credentials. At most `maxBytes` are
+   * downloaded (metered connection); only the last `tailChars` are kept.
+   */
+  async textTail(path: string, tailChars: number, maxBytes = 3_000_000): Promise<string> {
+    const url = this.url(path);
+    if (!url.startsWith(this.#o.base.replace(/\/+$/, '')))
+      throw new Error(`refusing to call ${new URL(url).host}`);
+    const f = this.#o.fetch ?? fetch;
+    const signal = AbortSignal.timeout(this.#o.timeoutMs ?? 20_000);
+    let res = await f(url, {
+      headers: { 'user-agent': 'jarvis-assistant', ...this.#o.headers, ...this.#o.auth() },
+      redirect: 'manual',
+      signal,
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      const next = location ? new URL(location, url) : null;
+      if (!next || next.protocol !== 'https:') throw new Error('redirection de log refusée');
+      res = await f(next.href, {
+        headers: { 'user-agent': 'jarvis-assistant' },
+        redirect: 'error',
+        signal,
+      });
+    }
+    if (!res.ok || !res.body)
+      throw new HttpError(res.status, `GET ${new URL(url).pathname} → ${res.status}`);
+    const decoder = new TextDecoder();
+    let tail = '';
+    let read = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      read += value.byteLength;
+      tail = (tail + decoder.decode(value, { stream: true })).slice(-tailChars);
+      if (read >= maxBytes) {
+        await reader.cancel();
+        tail = `[… log tronqué après ${Math.round(maxBytes / 1e6)} Mo …]\n${tail}`;
+        break;
+      }
+    }
+    return tail;
+  }
+
   /** Follows `next` (Link header or X-Next-Page) until `max` items. */
   async all<T>(
     path: string,

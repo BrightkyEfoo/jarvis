@@ -5,6 +5,8 @@ import {
   type ChangeDetail,
   type ChangeRequest,
   type ChecksState,
+  type CiFailure,
+  cleanLog,
   type ForgeClient,
   type ForgeInbox,
   type Issue,
@@ -33,7 +35,16 @@ interface GlMr {
   user_notes_count: number;
   references: { full: string };
   description?: string | null;
-  head_pipeline?: { status: string } | null;
+  head_pipeline?: { id: number; status: string } | null;
+  sha?: string;
+}
+interface GlJob {
+  id: number;
+  name: string;
+  stage: string;
+  status: string;
+  web_url: string;
+  allow_failure?: boolean;
 }
 interface GlDiff {
   new_path: string;
@@ -157,6 +168,49 @@ export class GitLabClient implements ForgeClient {
       checks: checks(detail.head_pipeline?.status),
       approvals: approvals.approved_by.length,
     };
+  }
+
+  async ciFailures(
+    repo: string,
+    target: { number?: number; ref?: string },
+    tailChars: number,
+  ): Promise<CiFailure[]> {
+    const id = project(repo);
+    let pipeline: number | undefined;
+    if (target.number !== undefined) {
+      pipeline = (await this.#http.get<GlMr>(`/projects/${id}/merge_requests/${target.number}`))
+        .head_pipeline?.id;
+    } else {
+      const [last] = await this.#http.get<{ id: number }[]>(`/projects/${id}/pipelines`, {
+        ref: target.ref,
+        per_page: 1,
+      });
+      pipeline = last?.id;
+    }
+    if (pipeline === undefined) return [];
+    const jobs = await this.#http.get<GlJob[]>(`/projects/${id}/pipelines/${pipeline}/jobs`, {
+      scope: 'failed',
+      per_page: 50,
+    });
+    return Promise.all(
+      jobs
+        .filter((j) => !j.allow_failure)
+        .slice(0, 3)
+        .map(async (j, i): Promise<CiFailure> => {
+          const log =
+            i < 2
+              ? await this.#http
+                  .textTail(`/projects/${id}/jobs/${j.id}/trace`, tailChars)
+                  .catch(() => '')
+              : '';
+          return {
+            name: `${j.stage} › ${j.name}`,
+            url: j.web_url,
+            annotations: [],
+            ...(log && { logTail: cleanLog(log) }),
+          };
+        }),
+    );
   }
 
   async reviewFacts(repo: string, number: number): Promise<ReviewFacts> {

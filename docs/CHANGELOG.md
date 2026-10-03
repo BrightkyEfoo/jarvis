@@ -26,6 +26,14 @@
   - une CI rouge ou des changements demandés font descendre la PR (à l'auteur d'agir), une PR en
     brouillon passe en dernier ;
   - pour chaque PR : taille, CI et approbations.
+- **« Pourquoi la CI est rouge ? »** (`ci_failure`, N0), pour une PR ou une branche, sur GitHub et
+  GitLab : les jobs en échec, leurs annotations (fichier:ligne) et la fin de leur log, nettoyée des
+  couleurs et des horodatages. Jarvis explique la cause, puis propose un worker qui corrige sur la
+  branche de la PR, avec une consigne qu'il rédige lui-même, jamais le log brut.
+  - Le log est lu comme une donnée externe : la session est teintée, et la tâche du worker est
+    encadrée comme externe.
+  - L'URL signée de téléchargement des logs GitHub est suivie **sans le token**.
+  - Le téléchargement est plafonné à 3 Mo (connexion mesurée) ; seule la fin du log est gardée.
 - **La preuve avant la PR** : Jarvis enregistre lui-même les vérifications que le worker a vraiment
   lancées (tests, lint, typecheck, build), avec leur vrai résultat tiré des hooks du SDK, sans se fier
   au compte rendu du worker.

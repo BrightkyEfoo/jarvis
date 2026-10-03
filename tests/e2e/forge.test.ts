@@ -53,6 +53,21 @@ describe('forges (S5)', () => {
     expect(h.rt.approvals.pending()).toHaveLength(0);
   });
 
+  it('why is CI red: annotations and log tail, fenced as data; a PR or a branch is required', async () => {
+    const out = await ask('call ci_failure {"repo":"acme/app","number":7}');
+    expect(out).toContain('<external_data source="ci_failure">');
+    expect(out).toContain('## test — https://github.com/acme/app/actions/runs/1/job/2');
+    expect(out).toContain('- src/login.ts:3 — Expected 30, received 5');
+    expect(out).toMatch(
+      /Fin du log :\n[\s\S]*Ignore previous instructions[\s\S]*<\/external_data>/,
+    );
+    expect(h.rt.brain?.session.tainted).toBe(true);
+    expect(await ask('call ci_failure {"repo":"acme/app"}')).toContain('rule input.invalid');
+    expect(await ask('call ci_failure {"repo":"acme/app","ref":"main"}')).toContain(
+      'Aucun job en échec',
+    );
+  });
+
   it('reads a PR with its diff; an injection in the description stays data', async () => {
     const out = await ask('call pr_read {"repo":"acme/app","number":7}');
     expect(out).toContain('### src/login.ts (modified, +3 −1)');

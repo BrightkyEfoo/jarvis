@@ -78,6 +78,17 @@ export interface ReviewFacts {
   source?: string;
 }
 
+/** A failed CI job, reduced to what explains it: annotations and the end of its log. */
+export interface CiFailure {
+  name: string;
+  url?: string;
+  /** The check's own summary (GitHub check output), if any. */
+  summary?: string;
+  annotations: { path: string; line?: number; message: string }[];
+  /** End of the job log, ANSI codes and timestamps removed. */
+  logTail?: string;
+}
+
 export interface ForgeInbox {
   /** Waiting for Brightky's review. */
   toReview: ChangeRequest[];
@@ -114,6 +125,12 @@ export interface ForgeClient {
     max: number;
   }): Promise<ChangeRequest[]>;
   getChange(repo: string, number: number, o: { maxPatchChars: number }): Promise<ChangeDetail>;
+  /** Failed CI jobs of a PR/MR (number) or of a branch's last commit (ref). */
+  ciFailures(
+    repo: string,
+    target: { number?: number; ref?: string },
+    tailChars: number,
+  ): Promise<CiFailure[]>;
   /** Size, paths, CI and reviews of one PR/MR, without the diff (review queue). */
   reviewFacts(repo: string, number: number): Promise<ReviewFacts>;
   listIssues(o: { repo?: string; state: 'open' | 'closed' | 'all'; max: number }): Promise<Issue[]>;
@@ -157,4 +174,14 @@ export function budgetPatches(files: ChangedFile[], maxChars: number): ChangedFi
     const patch = kept.get(f);
     return patch === undefined ? rest : { ...rest, patch };
   });
+}
+
+/** CI logs carry colours and per-line timestamps that only cost tokens. */
+export function cleanLog(log: string): string {
+  return log
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/gm, '')
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

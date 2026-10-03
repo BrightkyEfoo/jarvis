@@ -186,6 +186,58 @@ export function createForgeTools(d: ForgeToolDeps): ToolDef[] {
     },
   });
 
+  const ciFailure = defineTool({
+    name: 'ci_failure',
+    description:
+      'Why is CI red? For a PR/MR (number) or a branch (ref): the failed jobs with their annotations ' +
+      '(file:line) and the end of their logs. Explain the cause in plain words. To fix it, offer a ' +
+      'worker (worker_start with base = the PR branch and a task describing the error in your own ' +
+      'words, never the raw log).',
+    input: {
+      forge: forgeEnum.optional(),
+      repo: repoPath,
+      number: z.number().int().positive().optional(),
+      ref: z
+        .string()
+        .regex(/^[A-Za-z0-9._/-]{1,100}$/)
+        .optional(),
+    },
+    classify: (a): Classification =>
+      a.number === undefined && a.ref === undefined
+        ? forbid('input.invalid', 'give a PR number or a branch (ref)')
+        : read('forge.ci_failure'),
+    summarize: (a) => `Read CI failures of ${a.repo}${a.number ? `#${a.number}` : ` @ ${a.ref}`}`,
+    ingestsExternal: true,
+    run: async (a) => {
+      const failures = await pick(a.forge).ciFailures(
+        a.repo,
+        { ...(a.number !== undefined && { number: a.number }), ...(a.ref && { ref: a.ref }) },
+        6_000,
+      );
+      if (failures.length === 0)
+        return 'Aucun job en échec sur le dernier commit (CI verte ou en cours).';
+      return failures
+        .map((f) =>
+          [
+            `## ${f.name}${f.url ? ` — ${f.url}` : ''}`,
+            f.summary ? `Résumé : ${f.summary}` : '',
+            ...(f.annotations.length
+              ? [
+                  'Annotations :',
+                  ...f.annotations.map(
+                    (n) => `- ${n.path}${n.line ? `:${n.line}` : ''} — ${n.message}`,
+                  ),
+                ]
+              : []),
+            f.logTail ? `Fin du log :\n${f.logTail}` : '(log non récupéré)',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        )
+        .join('\n\n');
+    },
+  });
+
   const prList = defineTool({
     name: 'pr_list',
     description: 'List pull/merge requests of a repo, or all those involving Brightky (no repo).',
@@ -431,6 +483,7 @@ export function createForgeTools(d: ForgeToolDeps): ToolDef[] {
   return [
     inbox,
     reviewQueue,
+    ciFailure,
     prList,
     prRead,
     issueList,
