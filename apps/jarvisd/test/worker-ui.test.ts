@@ -117,14 +117,24 @@ describe('the worker only changes when UI checks are on', () => {
     denyRead: ['/Users/b/.ssh'],
   };
 
-  it('off: exactly the S6 sandbox and rules', () => {
+  it('off: the S6 sandbox and rules, browser profiles unreadable anyway', () => {
     expect(workerSandbox(o, { worktree: '/w/wt' })).toEqual({
       enabled: true,
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: false,
       allowUnsandboxedCommands: false,
       network: { allowedDomains: ['registry.npmjs.org'] },
-      filesystem: { allowWrite: ['/w/wt', '/w/tmp', '/w/cache'], denyRead: ['/Users/b/.ssh'] },
+      filesystem: {
+        allowWrite: ['/w/wt', '/w/tmp', '/w/cache'],
+        denyRead: [
+          '/Users/b/.ssh',
+          '/Users/b/Library/Application Support/Google/Chrome',
+          '/Users/b/Library/Application Support/Chromium',
+          '/Users/b/Library/Application Support/Arc',
+          '/Users/b/Library/Application Support/BraveSoftware',
+          '/Users/b/Library/Application Support/Microsoft Edge',
+        ],
+      },
     });
     const rules = workerRules();
     expect(rules).toContain('The network only reaches package registries.');

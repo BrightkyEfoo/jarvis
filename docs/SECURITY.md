@@ -156,6 +156,47 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   résultats réels des commandes (hooks du SDK), jamais du texte du worker. Sans preuve verte et à
   jour, la PR est un brouillon.
 
+- **Vérification de l'interface** (ADR-036), désactivée par défaut et scellée dans la politique.
+  Elle ne s'active que pour un dépôt détecté comme frontend web. Désactivée, ou sur un autre dépôt,
+  le worker est **exactement** celui du S6 : mêmes outils, mêmes règles, même sandbox, même
+  garde-fou. Aucun serveur MCP n'est ajouté.
+- **Sandbox, quand elle est activée** : `allowLocalBinding: true` (le serveur de dev doit
+  écouter), écriture dans le dossier de la tâche, les profils de Chrome, Arc,
+  Brave et Edge restent illisibles (ils le sont pour tous les workers). `allowedDomains` ne change pas, et les sockets Unix restent fermées : le socket
+  de jarvisd reste hors d'atteinte.
+- **Risque résiduel : la boucle locale n'est pas filtrée par port.** Le SDK ne propose qu'un
+  booléen, `allowLocalBinding`. Il ouvre en bloc `network-bind` et `network-inbound` sur `*:*`, et
+  `network-outbound` vers `localhost:*`, à **toutes** les commandes de la tâche (vérifié dans le
+  profil Seatbelt généré par Claude Code 2.1.285).
+  - Le suffixe `:port` des `allowedDomains` ne joue que sur le proxy, que le trafic local ne
+    traverse pas (`NO_PROXY=localhost,127.0.0.1,::1`).
+  - Pendant une telle tâche, du code du dépôt peut donc joindre **tout service qui écoute sur
+    127.0.0.1** : bases de données, un `node --inspect` (exécution de code hors sandbox), un Chrome
+    avec `--remote-debugging-port`, des serveurs de modèles locaux, le serveur de dev d'un autre
+    worker.
+  - **À faire par Brightky** : couper ces services avant d'activer l'option, ou la laisser
+    désactivée.
+- **Risque résiduel : le réseau local.** Un serveur de dev configuré sur `0.0.0.0` dans son
+  fichier de config est joignable depuis le réseau local pendant la tâche. Le garde-fou refuse
+  `0.0.0.0`, `::` et un `--host` seul sur la ligne de commande, mais il ne lit pas les fichiers de
+  config.
+- **Garde-fou, quand elle est activée** :
+  - Chrome sans interface seulement (`--headless`), avec un profil jetable dans le dossier de la
+    tâche ;
+  - captures, PDF et rapports Lighthouse/axe écrits seulement dans ce dossier ;
+  - URL limitées à `http://127.0.0.1|localhost:<port autorisé>` ;
+  - refusés : `--remote-debugging-*`, `--disable-web-security`, `--load-extension`,
+    `--proxy-server`, `--profile-directory` ;
+  - refusés aussi : `playwright install` et tout outil d'audit absent du projet lancé par
+    `npx`/`dlx`.
+  - Seul ajout : `Read` peut lire le dossier de la tâche, pour que le worker regarde ses captures.
+  - Ce garde-fou ne voit que la ligne de commande : un script Node peut lancer Chrome autrement. La
+    vraie limite reste la sandbox, dont Chrome hérite.
+- **Ports de services refusés dans la politique** (5432, 3306, 6379, 27017, 9200, 9222, 9229,
+  11434, 2375, 2376) : le navigateur n'est jamais dirigé vers eux. Ce n'est pas un pare-feu.
+
+- **Profils de navigateur** : illisibles pour tous les workers (cookies, sessions).
+
 ## Forges (GitHub, GitLab, Trello)
 
 - **Tokens**
@@ -295,6 +336,7 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 | R11 | Sur un domaine en liste blanche, une page piégée peut obtenir un « Commenter » sans confirmation | Liste vide par défaut ; destructions et paiements jamais dispensés | Choix de Brightky, à garder court |
 | R12 | Une capture d'écran peut montrer des données sensibles affichées dans une app autorisée | Apps sensibles exclues, captures hors audit | Masquage des zones sensibles (plus tard) |
 | R13 | Mains libres : quelqu'un dans la pièce, une vidéo ou la télé peut dire « Jarvis, … » | Le nom doit ouvrir la phrase ; N2 demande un « oui », N3 jamais à la voix, N4 interdit ; ⌃⎋ STOP ; mode désactivable | Reconnaissance de la voix de Brightky (S11) |
+| R14 | `workers.ui_checks` : les commandes d'une tâche frontend joignent tous les ports de 127.0.0.1 (le SDK ne filtre pas la boucle locale par port), et un serveur de dev mal configuré peut écouter sur le réseau local | Désactivé par défaut, seulement pour un frontend détecté ; garde-fou sur Chrome, les URL, les hôtes d'écoute et les téléchargements ; profils de navigateur illisibles ; ouverture inscrite au journal d'audit (`worker.ui`) | Demander un filtre par port pour `allowLocalBinding`, ou un profil `sandbox-exec` propre au serveur de dev (S12) |
 
 ## Signaler un problème
 

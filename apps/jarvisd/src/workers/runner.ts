@@ -148,7 +148,8 @@ export function workerSandbox(
     },
     filesystem: {
       allowWrite: [r.worktree, o.tmpDir, o.cacheDir, ...(ui ? [ui.dir] : [])],
-      denyRead: [...o.denyRead, ...(ui ? BROWSER_PROFILES.map((p) => join(o.home, p)) : [])],
+      // Browser profiles (cookies, sessions) are never a worker's business, UI checks or not.
+      denyRead: [...o.denyRead, ...BROWSER_PROFILES.map((p) => join(o.home, p))],
     },
   };
 }

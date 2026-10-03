@@ -948,3 +948,63 @@ communautés ».
 - les API non officielles et le partage du cookie de session ;
 - la programmation automatique ;
 - le Community Management API, tant qu'il n'y a pas de structure immatriculée.
+
+## ADR-036 — Les workers vérifient l'interface dans un vrai navigateur (03/10/2026)
+
+**Contexte** (rapport « Jarvis pour les équipes tech », proposition 13) : un worker qui modifie un
+frontend ne voit jamais le résultat. La boucle utile est gratuite et locale : serveur de dev,
+captures à plusieurs largeurs, audits d'accessibilité et de performance. Mais la sandbox des
+workers n'ouvre le réseau qu'aux registres de paquets, et la connexion de Brightky est mesurée.
+
+**Décision** :
+- **Option scellée, désactivée par défaut** : `workers.ui_checks: { enabled, ports, widths }`,
+  validée par zod (ports ≥ 1024, sans doublon, ports de services refusés ; 1 à 5 largeurs).
+- **Activée seulement pour un frontend web**, détecté à l'exécution dans les `package.json` (à la
+  racine, dans `apps/*`, `packages/*`, `web/`…). Sinon, rien ne change pour le worker.
+- **Tout tourne dans la sandbox du worker** : serveur de dev, Chrome, Lighthouse, Playwright.
+  - Chrome hérite donc des mêmes limites : écriture confinée, Internet limité aux registres.
+  - La seule ouverture est `allowLocalBinding: true`, plus les noms Mach du rendez-vous de
+    Chrome (`*.MachPortRendezvousServer.*`) et le dossier de la tâche en écriture.
+- **Chrome du Mac en ligne de commande** (`--headless=new --screenshot --window-size`), avec un
+  profil jetable. Aucun navigateur n'est téléchargé, et `PUPPETEER_SKIP_DOWNLOAD` et
+  `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` sont posés. Lighthouse, axe et Playwright tournent seulement
+  s'ils sont déjà des dépendances du projet.
+- **Tout ce qui compte est imposé par le code** : sandbox, garde-fou (Chrome, URL, hôte d'écoute,
+  téléchargements, emplacement des fichiers) et contrôle du PNG avant de compter une capture. Les
+  consignes du worker ne font qu'expliquer ces règles.
+- **Preuve et PR** : les captures et les audits sont des vérifications comme les autres. Une
+  capture sans PNG réel est rouge. La section « Interface vérifiée » vient des commandes
+  réellement exécutées, jamais du texte du worker. Les captures sont gardées à côté du journal de
+  la tâche, hors de git.
+
+**Ce que le SDK permet et ne permet pas** (types de `@anthropic-ai/claude-agent-sdk` 0.3.285,
+`SandboxNetworkConfig`, `SandboxSettings`) :
+- Permet : `allowedDomains` et `deniedDomains`, avec un suffixe `:port`, mais pour le proxy
+  seulement ; `allowLocalBinding` (booléen, macOS) ; `allowUnixSockets` (par chemin) ;
+  `allowMachLookup` (par nom, joker en fin) ; `filesystem.allowWrite` et `denyRead`.
+- Ne permet pas : filtrer la boucle locale par port. Dans le profil Seatbelt généré,
+  `allowLocalBinding` donne `network-bind` et `network-inbound` sur `*:*`, et `network-outbound`
+  vers `localhost:*`. Les adresses locales sont dans `NO_PROXY`, donc le filtre du proxy ne les
+  voit pas. Il n'y a pas non plus de profil Seatbelt personnalisé. D'où le risque résiduel R14.
+
+**Écarté** :
+- **Serveurs MCP navigateur** (Chrome DevTools MCP, Playwright MCP). Un serveur MCP stdio est lancé
+  par le processus Claude Code, **hors de la sandbox du Bash**. Le Chrome qu'il piloterait
+  exécuterait le code du dépôt avec tout le réseau du Mac (Internet, réseau local), et
+  `evaluate_script` contournerait la liste blanche.
+  - Aucun n'est installé sur le Mac (vérifié le 03/10/2026), et leurs options n'ont pas pu être
+    vérifiées hors ligne.
+  - À revoir s'ils peuvent tourner sous un profil `sandbox-exec` propre, avec un filtre par port.
+- **Navigateurs Playwright téléchargés** : plusieurs centaines de Mo sur une connexion mesurée,
+  alors que Chrome est déjà installé.
+- **Lancer Chrome ou le serveur de dev depuis le daemon** : ce serait exécuter le code du dépôt
+  hors de la sandbox (même raison que pour la preuve avant la PR).
+- **Mettre `localhost:<port>` dans `allowedDomains`** : sans effet, puisque le trafic local
+  contourne le proxy.
+- **Captures dans le dépôt ou jointes à la PR** : elles alourdiraient l'historique, et une capture
+  peut montrer des données locales. Elles restent sur le Mac, avec le journal de la tâche.
+
+**Non testé en réel** : Chrome dans la sandbox de Claude Code. Il faut vérifier s'il a besoin
+d'autres services Mach ou de `--no-sandbox` (sandbox imbriquée), et si ses écritures restent dans
+le profil jetable. Il faut aussi tester Lighthouse via chrome-launcher, et le serveur de dev de
+Next, Vite et Storybook sur `127.0.0.1`. Premier essai à faire avec Brightky, sur un vrai frontend.

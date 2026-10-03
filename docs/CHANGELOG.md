@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.18.0 — Les workers vérifient l'interface (03/10/2026)
+
+### Ajouté
+- **Vérification de l'interface par les workers** (`workers.ui_checks`, **désactivée par
+  défaut**). Quand elle est activée dans la politique scellée et que le dépôt de la tâche est un
+  frontend web (React, Next.js, Vite, Storybook, détecté dans les `package.json`) :
+  - le worker lance le serveur de dev sur `127.0.0.1`, sur un des ports autorisés (3000, 5173 et
+    6006 par défaut) ;
+  - il prend des captures avec le **Google Chrome du Mac**, sans interface, avec un profil jetable,
+    à 375, 768 et 1280 px. Il peut ensuite les regarder et corriger ce qui ne va pas ;
+  - Lighthouse, axe et Playwright ne tournent que **si le projet en dépend déjà**. **Rien n'est
+    téléchargé** : ni navigateur Playwright, ni outil lancé par `npx` ou `dlx` ;
+  - ce qui manque (Chrome, Lighthouse, axe) est dit en français dans la PR.
+- **Section « Interface vérifiée » dans la PR** : un tableau pages × largeurs, les scores
+  Lighthouse (performance, accessibilité, bonnes pratiques, SEO), le résultat d'axe et des tests
+  Playwright, puis ce qui n'était pas disponible.
+- **Les captures comptent dans la preuve** : `proof.ts` reconnaît les captures de Chrome sans
+  interface, Lighthouse, axe et `playwright test`.
+  - Une capture n'est verte que si Chrome a réussi **et** qu'un vrai PNG est apparu dans le dossier
+    de la tâche ; sinon, la PR passe en brouillon.
+  - Dans « Vérifié par Jarvis », les captures tiennent en une ligne (« captures d'écran : 6/6
+    produites »).
+- **Les captures restent hors du dépôt**, à côté du journal de la tâche
+  (`logs/workers/<id>-ui/`). Les dossiers `test-results/`, `playwright-report/` et
+  `.lighthouseci/` sont retirés du commit. Le dossier de travail de la tâche (profil Chrome,
+  rapports) est supprimé à la fin.
+- Tests : détection, règles du garde-fou (activé et désactivé), sandbox, preuve, section de PR, et
+  un e2e sur un vrai git avec un faux worker. Chrome n'est jamais lancé en test.
+
+### Sécurité
+- Les profils de navigateur (Chrome, Arc, Brave, Edge) sont illisibles pour **tous** les workers, et plus seulement quand la vérification d'interface est active.
+
 ## 0.17.0 — LinkedIn, community manager (03/10/2026)
 
 ### Ajouté
