@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ForgeClient, ForgeId } from '@jarvis/connectors';
 import type { KillSwitch } from '@jarvis/policy';
@@ -9,6 +9,15 @@ import { proofOf } from './proof.ts';
 import type { WorkerOutcome, WorkerRunner } from './runner.ts';
 import { fileLogger } from './runner.ts';
 import type { Task, TaskStore } from './store.ts';
+import {
+  confirmCaptures,
+  detectUi,
+  keepCaptures,
+  type UiChecksPolicy,
+  type UiEnv,
+  type UiRun,
+  uiSection,
+} from './ui.ts';
 
 export interface WorkerEvent {
   id: string;
@@ -53,9 +62,16 @@ export interface WorkerManagerDeps {
   quotaOk: () => boolean;
   /** Called once a task ends (Trello follow-up…); errors are logged, never fatal. */
   onFinished?: (t: Task) => Promise<void>;
+  /** Browser checks for web frontends (policy workers.ui_checks, ADR-036). */
+  uiChecks?: UiChecksPolicy;
+  /** Finds the frontend, Chrome and the project's audit tools at run time (tests inject one). */
+  detectUi?: (worktree: string) => UiEnv | null;
 }
 
 class Stop extends Error {}
+
+/** Folders browser test runs write into the repository (Playwright, Lighthouse CI). */
+const UI_REPORTS = /^((?:.*\/)?(?:test-results|playwright-report|\.lighthouseci)\/)/;
 
 /**
  * Task → own clone → worktree → Claude Code (sandboxed, guarded) → checks → one clean commit in
@@ -220,6 +236,7 @@ export class WorkerManager {
     let repoDir: string | null = null;
     let branch: string | null = null;
     let auth: GitAuth | undefined;
+    let ui: UiRun | null = null;
     d.audit.append({
       event: 'intent',
       tool: 'worker',
@@ -267,7 +284,13 @@ export class WorkerManager {
 
       // 2. The worker codes, guarded tool by tool and sandboxed.
       this.#step(task, 'implémentation', signal);
-      const guard = workerGuard({ worktree, home: d.home, extraDeny: d.extraDeny });
+      ui = this.#ui(task.id, worktree, log);
+      const guard = workerGuard({
+        worktree,
+        home: d.home,
+        extraDeny: d.extraDeny,
+        ...(ui && { ui: { ports: ui.ports, dir: ui.dir, tools: ui.tools } }),
+      });
       const runner = d.runner;
       if (!runner) throw new Error('aucun token d’abonnement');
       const outcome: WorkerOutcome = await runner.run({
@@ -280,6 +303,7 @@ export class WorkerManager {
         model: task.model,
         signal,
         log,
+        ...(ui && { ui }),
         guard: (tool, input) => {
           const v = guard(tool, input);
           if (!v.allow)
@@ -300,6 +324,10 @@ export class WorkerManager {
         turns: outcome.turns,
         summary: outcome.summary,
       });
+      // Screenshots go next to the task log, never into the repository.
+      const shotsDir = join(d.logsDir, `${task.id}-ui`);
+      const kept = ui ? keepCaptures(ui.dir, shotsDir) : [];
+      if (kept.length) log(`captures : ${kept.length} dans ${shotsDir}`);
       if (signal.aborted) throw new Stop('annulée');
       if (!outcome.ok) throw new Error(outcome.error ?? 'le worker a échoué');
 
@@ -308,11 +336,18 @@ export class WorkerManager {
       await d.git.run(['add', '-A'], { cwd: worktree, signal });
       // One commit, whatever the worker did with git: squash onto the base.
       await d.git.run(['reset', '--soft', `origin/${base}`], { cwd: worktree, signal });
-      const files = (
-        await d.git.run(['diff', '--cached', '--name-only'], { cwd: worktree, signal })
-      )
+      let files = (await d.git.run(['diff', '--cached', '--name-only'], { cwd: worktree, signal }))
         .split('\n')
         .filter(Boolean);
+      if (ui) {
+        // Browser test reports and their screenshots are output, not code: out of the commit.
+        const reports = [...new Set(files.flatMap((f) => UI_REPORTS.exec(f)?.[1] ?? []))];
+        if (reports.length) {
+          await d.git.run(['reset', '-q', '--', ...reports], { cwd: worktree, signal });
+          files = files.filter((f) => !UI_REPORTS.test(f));
+          log(`rapports de navigateur écartés du commit : ${reports.join(', ')}`);
+        }
+      }
       if (files.length === 0) throw new Error('aucun changement produit');
       const bad = files.filter((f) => PROTECTED.some((re) => re.test(f)));
       if (bad.length) throw new Error(`fichiers protégés modifiés : ${bad.join(', ')}`);
@@ -336,7 +371,12 @@ export class WorkerManager {
       if (AI_TRAILER.test(message)) throw new Error('le message de commit contient une mention IA');
 
       // Proof: the checks the worker really ran decide whether the PR is ready or a draft.
-      const proof = proofOf(outcome.checks, outcome.editedAfterChecks);
+      // A capture counts only if a PNG really exists, whatever Chrome's exit code said; with UI
+      // checks off there is no task folder to look in, so it does not count at all.
+      const checks = ui
+        ? confirmCaptures(outcome.checks ?? [], ui.dir)
+        : outcome.checks?.filter((c) => c.ui?.kind !== 'capture');
+      const proof = proofOf(checks, outcome.editedAfterChecks);
       log(`preuve : ${proof.short}`);
 
       // 4. Publish: a jarvis/… branch, then a pull request (never a merge).
@@ -355,6 +395,7 @@ export class WorkerManager {
         body: [
           body || title,
           `\n### Vérifié par Jarvis\nCommandes réellement exécutées, dernier résultat de chacune :\n${proof.markdown}`,
+          ...(ui ? [`\n${uiSection(ui, checks ?? [], kept)}`] : []),
           outcome.tests ? `\n### Compte rendu des vérifications\n${clean(outcome.tests)}` : '',
           `\n---\nTâche : ${task.prompt.slice(0, 500)}`,
         ].join('\n'),
@@ -405,6 +446,14 @@ export class WorkerManager {
         }),
       );
     } finally {
+      // The task's browser folder (profile, reports) goes; kept screenshots are next to the log.
+      if (ui) {
+        try {
+          rmSync(ui.dir, { recursive: true, force: true });
+        } catch (e) {
+          log(`dossier d’interface non supprimé : ${(e as Error).message}`);
+        }
+      }
       if (worktree && repoDir) {
         const [dir, wt, b] = [repoDir, worktree, branch];
         await this.#locked(dir, async () => {
@@ -415,6 +464,32 @@ export class WorkerManager {
         });
       }
     }
+  }
+
+  /** Browser checks for this task: only if the policy enables them and the repo is a web frontend. */
+  #ui(id: string, worktree: string, log: (line: string) => void): UiRun | null {
+    const d = this.#d;
+    const policy = d.uiChecks;
+    if (!policy?.enabled) return null;
+    const found = (d.detectUi ?? ((w: string) => detectUi(w, d.home)))(worktree);
+    if (!found) {
+      log('interface : pas de frontend web détecté, pas de vérification dans le navigateur');
+      return null;
+    }
+    const dir = join(d.dir, 'ui', id);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    log(
+      `interface : ${found.frameworks.join(', ')} ; Chrome ${found.chrome ? 'trouvé' : 'absent'} ; ports ${policy.ports.join(', ')}`,
+    );
+    // The sandbox opens loopback for this task only: on the record.
+    d.audit.append({
+      event: 'system',
+      tool: 'worker',
+      level: 1,
+      rule: 'worker.ui',
+      data: { id, frameworks: found.frameworks, ports: policy.ports, chrome: !!found.chrome },
+    });
+    return { ...found, dir, ports: policy.ports, widths: policy.widths };
   }
 
   log(id: string, lines: number): string {

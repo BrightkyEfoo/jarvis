@@ -1,5 +1,6 @@
 import { basename, relative, sep } from 'node:path';
 import { FsPolicy, type PathError, parseShell, ShellParseError } from '@jarvis/policy';
+import { auditIndex, flagValue, isBrowser, loopbackUrl, shellWords, type UiTools } from './ui.ts';
 
 export interface GuardVerdict {
   allow: boolean;
@@ -112,7 +113,54 @@ export interface WorkerGuardOptions {
   home: string;
   /** Paths denied on top of the built-in list (policy.filesystem.deny). */
   extraDeny: readonly string[];
+  /** Browser checks of a web frontend (ADR-036); absent, the guard is exactly the S6 one. */
+  ui?: WorkerUiGuard;
 }
+
+export interface WorkerUiGuard {
+  /** Loopback ports the headless browser and the audits may open. */
+  ports: readonly number[];
+  /** The task's folder for screenshots, reports and the throwaway profile (outside the repo). */
+  dir: string;
+  /** Audit tools the project declares: the others are never fetched on the fly. */
+  tools: UiTools;
+}
+
+/** Flags that name the address a dev server listens on. */
+const HOST_FLAGS = new Set(['--host', '--hostname', '-H', '--bind', '--listen']);
+const ANY_ADDRESS = new Set(['0.0.0.0', '::', '[::]', '::0']);
+/** Browser flags that would open it to other processes, other pages or Brightky's profiles. */
+const BROWSER_DENY = new Set([
+  '--remote-debugging-port',
+  '--remote-debugging-address',
+  '--remote-allow-origins',
+  '--load-extension',
+  '--disable-extensions-except',
+  '--disable-web-security',
+  '--allow-file-access-from-files',
+  '--profile-directory',
+  '--app',
+  '--proxy-server',
+  '--proxy-pac-url',
+  '--host-resolver-rules',
+  '--enable-logging',
+]);
+/** Browser flags that write files: only in the task's folder. */
+const BROWSER_OUTPUT = new Set([
+  '--screenshot',
+  '--print-to-pdf',
+  '--user-data-dir',
+  '--crash-dumps-dir',
+  '--disk-cache-dir',
+]);
+/** Packages that `npx` or `dlx` would download just to check a page. */
+const UI_PACKAGES: Record<string, keyof UiTools> = {
+  lighthouse: 'lighthouse',
+  axe: 'axe',
+  '@axe-core/cli': 'axe',
+  playwright: 'playwright',
+  '@playwright/test': 'playwright',
+};
 
 /**
  * Decides every tool call of a Claude Code worker. The worker only reads and writes its own git
@@ -151,6 +199,120 @@ export function workerGuard(
     }
     const c = fs.check(abs, mode, root);
     return c.level >= 3 ? deny(c.rule, c.reason) : allow(`worker.${mode}`);
+  };
+
+  const ui = o.ui;
+  const uiRoot = ui ? fs.resolve(ui.dir, root) : '';
+  const inUi = (path: string): boolean => {
+    if (!ui) return false;
+    let abs: string;
+    try {
+      abs = fs.resolve(path, root);
+    } catch {
+      return false;
+    }
+    const rel = relative(uiRoot, abs);
+    return !rel.startsWith('..') && !rel.startsWith(sep) && !/^[a-z]:/i.test(rel);
+  };
+
+  /** Extra rules of a frontend task; null when none applies to this command. */
+  const uiCommand = (argv: readonly string[], u: WorkerUiGuard): GuardVerdict | null => {
+    const [bin = '', ...args] = argv;
+    const base = basename(bin).toLowerCase();
+
+    // A dev server stays on loopback: on 0.0.0.0 the local network could reach it.
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i] ?? '';
+      const eq = a.indexOf('=');
+      const name = eq > 0 ? a.slice(0, eq) : a;
+      if (!HOST_FLAGS.has(name)) continue;
+      const value = eq > 0 ? a.slice(eq + 1) : args[i + 1];
+      if (ANY_ADDRESS.has(value ?? '') || (name === '--host' && (!value || value.startsWith('-'))))
+        return deny(
+          'worker.ui.bind_all',
+          `${a}: the dev server listens on 127.0.0.1 only (e.g. --host 127.0.0.1)`,
+        );
+    }
+
+    // Nothing is downloaded for a check: no browser bundles, no one-shot audit tools.
+    const pw = argv.findIndex((a) => basename(a) === 'playwright');
+    if (pw >= 0 && ['install', 'install-deps'].includes(argv[pw + 1] ?? ''))
+      return deny(
+        'worker.ui.no_download',
+        "playwright install: browsers are never downloaded (metered connection); the Mac's Chrome takes the screenshots",
+      );
+    const dlx = (base === 'pnpm' || base === 'yarn') && argv[1] === 'dlx';
+    if (base === 'npx' || base === 'bunx' || dlx || (base === 'npm' && argv[1] === 'exec')) {
+      const spec = argv.slice(1).find((a) => !a.startsWith('-') && a !== 'dlx' && a !== 'exec');
+      const name = spec?.replace(/^(@[^/]+\/[^@]+|[^@]+)@.*$/, '$1') ?? '';
+      const tool = UI_PACKAGES[name];
+      if (tool && (dlx || !u.tools[tool]))
+        return deny(
+          'worker.ui.no_download',
+          `${name} is not a dependency of this project: it is never downloaded for a check`,
+        );
+    }
+
+    // The Mac's browser: headless, throwaway profile, files in the task's folder, loopback only.
+    if (isBrowser(bin)) {
+      if (!args.some((a) => a === '--headless' || a.startsWith('--headless=')))
+        return deny('worker.ui.browser', 'the browser runs headless only (--headless=new)');
+      const profile = args.find((a) => a.startsWith('--user-data-dir='));
+      if (!profile || !inUi(profile.slice('--user-data-dir='.length)))
+        return deny(
+          'worker.ui.browser',
+          `a throwaway profile is required: --user-data-dir=<folder in ${u.dir}>`,
+        );
+      for (const a of args) {
+        const name = a.split('=')[0] ?? a;
+        if (BROWSER_DENY.has(name)) return deny('worker.ui.browser', `${name} is not allowed`);
+        if (BROWSER_OUTPUT.has(name)) {
+          const v = a.includes('=') ? a.slice(a.indexOf('=') + 1) : '';
+          if (!v || !inUi(v))
+            return deny('worker.ui.output', `${name} writes only in ${u.dir} (${name}=<path>)`);
+        }
+        if (!a.startsWith('-') && !loopbackUrl(a, u.ports))
+          return deny(
+            'worker.ui.url',
+            `${a}: only http://127.0.0.1:<port>/ on ports ${u.ports.join(', ')}`,
+          );
+      }
+      return null;
+    }
+
+    // Lighthouse and axe: loopback pages only, reports in the task's folder.
+    const at = auditIndex(argv);
+    if (at < 0) return null;
+    const tool = basename(argv[at] ?? '');
+    const rest = argv.slice(at + 1);
+    for (const a of rest) {
+      if (a.startsWith('-') || !a.includes('://')) continue;
+      for (const url of a.split(','))
+        if (!loopbackUrl(url, u.ports))
+          return deny(
+            'worker.ui.url',
+            `${url}: only http://127.0.0.1:<port>/ on ports ${u.ports.join(', ')}`,
+          );
+    }
+    const chromeFlags = shellWords(flagValue(rest, '--chrome-flags') ?? '');
+    const bad = chromeFlags.find((f) => BROWSER_DENY.has(f.split('=')[0] ?? f));
+    if (bad) return deny('worker.ui.browser', `${bad} is not allowed`);
+    const profile = flagValue(chromeFlags, '--user-data-dir');
+    if (profile !== undefined && !inUi(profile))
+      return deny('worker.ui.browser', `--user-data-dir must be in ${u.dir}`);
+    if (tool === 'lighthouse') {
+      const out = flagValue(rest, '--output-path');
+      if (!out || !inUi(out))
+        return deny(
+          'worker.ui.output',
+          `lighthouse writes its report in ${u.dir} only: --output-path=<file in that folder>`,
+        );
+    } else if (rest.some((a) => a === '--save' || a === '-s' || a.startsWith('--save='))) {
+      const dir = flagValue(rest, '--dir');
+      if (!dir || !inUi(dir))
+        return deny('worker.ui.output', `axe saves its results in ${u.dir} only: --dir <folder>`);
+    }
+    return null;
   };
 
   const bash = (command: string): GuardVerdict => {
@@ -204,6 +366,10 @@ export function workerGuard(
           if (!v.allow)
             return deny('worker.shell.redirect', `redirect to ${r.target}: ${v.reason}`);
         }
+        if (ui) {
+          const v = uiCommand(cmd.argv, ui);
+          if (v) return v;
+        }
       }
     }
     return allow('worker.shell', 'sandboxed command');
@@ -212,7 +378,12 @@ export function workerGuard(
   return (tool, input) => {
     const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : undefined);
     switch (tool) {
-      case 'Read':
+      case 'Read': {
+        // Frontend tasks: the worker looks at its own screenshots.
+        const path = str('file_path') ?? str('notebook_path') ?? '';
+        if (ui && path && inUi(path)) return allow('worker.ui.read');
+        return inside(path, 'read');
+      }
       case 'NotebookRead':
         return inside(str('file_path') ?? str('notebook_path') ?? '', 'read');
       case 'Glob':

@@ -445,6 +445,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     extraDeny: policy.filesystem.deny,
     maxParallel: policy.workers.max_parallel,
     draftPr: policy.workers.draft_pr,
+    uiChecks: policy.workers.ui_checks,
     // Background work stops before eating the share kept for Brightky's own requests.
     quotaOk: () => (quota.get('five_hour')?.utilization ?? 0) < 1 - reserve,
     onFinished: async (t) => {

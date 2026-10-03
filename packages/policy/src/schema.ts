@@ -27,6 +27,16 @@ const AutoApproveRule = z
   })
   .strict();
 
+/** Local services a worker's browser is never pointed at (databases, debuggers, model servers). */
+const SERVICE_PORTS = new Set([2375, 2376, 3306, 5432, 6379, 9200, 9222, 9229, 11434, 27017]);
+
+const UiPort = z
+  .number()
+  .int()
+  .min(1024)
+  .max(65535)
+  .refine((p) => !SERVICE_PORTS.has(p), { message: 'port of a local service, not a dev server' });
+
 const AccountId = z
   .string()
   .regex(/^[a-z][a-z0-9-]{1,30}$/, 'lowercase id, e.g. perso or scriptify');
@@ -199,6 +209,29 @@ export const PolicySchema = z
             'services.gradle.org',
             'jsr.io',
           ]),
+        /**
+         * Browser checks for web frontends (ADR-036), off by default. When on, and only for a
+         * repository that is a web frontend, the sandbox lets the dev server listen on loopback.
+         */
+        ui_checks: z
+          .object({
+            enabled: z.boolean().prefault(false),
+            /** Dev server ports the headless browser may open (the sandbox cannot filter ports). */
+            ports: z
+              .array(UiPort)
+              .min(1)
+              .max(8)
+              .refine((a) => new Set(a).size === a.length, { message: 'duplicate port' })
+              .prefault([3000, 5173, 6006]),
+            /** Screenshot widths in CSS pixels: mobile, tablet, desktop. */
+            widths: z
+              .array(z.number().int().min(320).max(2560))
+              .min(1)
+              .max(5)
+              .prefault([375, 768, 1280]),
+          })
+          .strict()
+          .prefault({}),
       })
       .strict()
       .prefault({}),

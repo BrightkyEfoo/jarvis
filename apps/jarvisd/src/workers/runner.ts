@@ -4,6 +4,7 @@ import {
   type HookCallback,
   type HookJSONOutput,
   query,
+  type SandboxSettings,
   type SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
@@ -11,6 +12,7 @@ import { SHELL_PATH_DIRS, sdkEnv } from '../env.ts';
 import { subscriptionProblems } from '../guards.ts';
 import type { GuardVerdict } from './guard.ts';
 import { type CheckRun, ProofRecorder } from './proof.ts';
+import { type UiRun, uiEnv, uiRules } from './ui.ts';
 
 export interface WorkerRun {
   worktree: string;
@@ -24,6 +26,8 @@ export interface WorkerRun {
   signal: AbortSignal;
   guard: (tool: string, input: Record<string, unknown>) => GuardVerdict;
   log: (line: string) => void;
+  /** Browser checks of a web frontend (ADR-036): absent, the worker is exactly the S6 one. */
+  ui?: UiRun;
 }
 
 export interface WorkerOutcome {
@@ -102,6 +106,53 @@ const RULES = `
 - Shell: plain commands only (no $(...) or backticks); write a script file when you need logic.
 - Finish with the structured result: PR title, summary of the change, checks run, complete true/false.`;
 
+/** The worker's rules; a frontend task with UI checks on gets the browser section too. */
+export function workerRules(ui?: UiRun): string {
+  return ui ? `${RULES}\n${uiRules(ui)}` : RULES;
+}
+
+/** Browser profiles on the Mac: a worker's headless Chrome never reads them. */
+const BROWSER_PROFILES = [
+  'Library/Application Support/Google/Chrome',
+  'Library/Application Support/Chromium',
+  'Library/Application Support/Arc',
+  'Library/Application Support/BraveSoftware',
+  'Library/Application Support/Microsoft Edge',
+];
+/** Chrome's helper processes find their parent through this Mach service (bundle id prefix). */
+const CHROME_MACH = [
+  'com.google.Chrome.MachPortRendezvousServer.*',
+  'com.google.chrome.for.testing.MachPortRendezvousServer.*',
+  'org.chromium.Chromium.MachPortRendezvousServer.*',
+];
+
+/**
+ * The macOS sandbox of the worker's shell. Without UI checks: writes in the worktree, its tmp and
+ * the package caches; network to the registries only. With them, the dev server may listen on
+ * loopback. The SDK's only knob for that is `allowLocalBinding`, which opens every loopback port
+ * to every sandboxed command (no port filter exists): ADR-036, residual risk.
+ */
+export function workerSandbox(
+  o: Pick<ClaudeWorkerOptions, 'home' | 'tmpDir' | 'cacheDir' | 'network' | 'denyRead'>,
+  r: Pick<WorkerRun, 'worktree' | 'ui'>,
+): SandboxSettings {
+  const ui = r.ui;
+  return {
+    enabled: true,
+    failIfUnavailable: true,
+    autoAllowBashIfSandboxed: false,
+    allowUnsandboxedCommands: false,
+    network: {
+      allowedDomains: [...o.network],
+      ...(ui && { allowLocalBinding: true, allowMachLookup: [...CHROME_MACH] }),
+    },
+    filesystem: {
+      allowWrite: [r.worktree, o.tmpDir, o.cacheDir, ...(ui ? [ui.dir] : [])],
+      denyRead: [...o.denyRead, ...(ui ? BROWSER_PROFILES.map((p) => join(o.home, p)) : [])],
+    },
+  };
+}
+
 export interface ClaudeWorkerOptions {
   home: string;
   oauthToken: string;
@@ -176,7 +227,7 @@ export class ClaudeWorkerRunner implements WorkerRunner {
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
-          append: `${RULES}${notes ? `\n\n# Project instructions (from the repository)\n${notes}` : ''}`,
+          append: `${workerRules(r.ui)}${notes ? `\n\n# Project instructions (from the repository)\n${notes}` : ''}`,
         },
         env: {
           ...sdkEnv({
@@ -197,6 +248,7 @@ export class ClaudeWorkerRunner implements WorkerRunner {
           GOMODCACHE: join(o.cacheDir, 'go-mod'),
           GOCACHE: join(o.cacheDir, 'go-build'),
           CARGO_HOME: join(o.cacheDir, 'cargo'),
+          ...(r.ui && uiEnv(r.ui)),
         },
         // No ~/.claude, no project .claude/settings.json (it could set an API key helper or hooks).
         settingSources: [],
@@ -208,14 +260,7 @@ export class ClaudeWorkerRunner implements WorkerRunner {
           includeCoAuthoredBy: false,
           includeGitInstructions: false,
         },
-        sandbox: {
-          enabled: true,
-          failIfUnavailable: true,
-          autoAllowBashIfSandboxed: false,
-          allowUnsandboxedCommands: false,
-          network: { allowedDomains: [...o.network] },
-          filesystem: { allowWrite: [r.worktree, o.tmpDir, o.cacheDir], denyRead: [...o.denyRead] },
-        },
+        sandbox: workerSandbox(o, r),
         allowedTools: [
           'Read',
           'Write',
