@@ -26,6 +26,14 @@
   - une CI rouge ou des changements demandés font descendre la PR (à l'auteur d'agir), une PR en
     brouillon passe en dernier ;
   - pour chaque PR : taille, CI et approbations.
+- **La preuve avant la PR** : Jarvis enregistre lui-même les vérifications que le worker a vraiment
+  lancées (tests, lint, typecheck, build), avec leur vrai résultat tiré des hooks du SDK, sans se fier
+  au compte rendu du worker.
+  - La PR affiche « Vérifié par Jarvis » : ✅ ou ❌ par commande, avec le dernier résultat de chacune.
+  - Elle est ouverte en brouillon, avec un avertissement, si aucune vérification n'a tourné, si
+    l'une échoue à la fin, ou si du code a été modifié après la dernière vérification.
+  - L'étape de la tâche le dit (« PR ouverte, vérifiée (2 commandes au vert) »), dans le tableau
+    de bord comme sur l'île.
 - **Pré-revue sans bruit** : seulement les problèmes sévères, cinq au plus, avec fichier:ligne et la
   raison, jamais de pinaillage, et « rien de bloquant » si rien de grave. Un commentaire ne part
   qu'avec son texte exact validé (N2).

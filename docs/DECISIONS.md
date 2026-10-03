@@ -704,6 +704,17 @@ de streaming), Qwen3-TTS et Kyutai TTS 1,6 B (trop lourds pour le M1 Pro avec le
 set-token`) et un token GitHub, ce qui consomme du quota. C'est la première chose à faire avec
 Brightky.
 
+**Complément (03/10/2026), la preuve avant la PR** (rapport « Jarvis pour les équipes tech »,
+proposition 4) : le compte rendu « tests OK » d'un worker est un texte du modèle, pas une preuve.
+- **Ce qui a vraiment tourné** : les hooks `PostToolUse` et `PostToolUseFailure` du SDK
+  enregistrent chaque commande Bash de vérification et son vrai résultat (succès ou échec), ainsi
+  que chaque modification de fichier. Un module pur (`workers/proof.ts`) reconnaît ces commandes :
+  test, lint, typecheck et build pour une quinzaine d'écosystèmes.
+- **Ce que Jarvis en tire** : PR prête si la dernière exécution de chaque vérification est verte et
+  qu'aucun fichier n'a changé depuis. Sinon, brouillon avec un avertissement explicite.
+- **Écarté** : relancer les tests nous-mêmes hors du bac à sable. Ce serait exécuter le code du
+  dépôt sur le Mac sans la sandbox du worker.
+
 ## ADR-028 — S7 : des cartes Trello aux workers, en parallèle (02/10/2026)
 
 - **`trello_take`** (N2, **une validation pour le lot**) prend les cartes étiquetées `jarvis` sur

@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { SHELL_PATH_DIRS, sdkEnv } from '../env.ts';
 import { subscriptionProblems } from '../guards.ts';
 import type { GuardVerdict } from './guard.ts';
+import { type CheckRun, ProofRecorder } from './proof.ts';
 
 export interface WorkerRun {
   worktree: string;
@@ -33,6 +34,9 @@ export interface WorkerOutcome {
   costUsd: number;
   turns: number;
   error?: string;
+  /** Check commands the worker really ran (last outcome of each), recorded from the SDK hooks. */
+  checks?: CheckRun[];
+  editedAfterChecks?: boolean;
 }
 
 /** The coding agent behind a task. Tests use a scripted runner that edits files directly. */
@@ -144,6 +148,25 @@ export class ClaudeWorkerRunner implements WorkerRunner {
       return out;
     };
 
+    // What really ran: outcomes come from the tool results, not from the worker's report.
+    const proof = new ProofRecorder();
+    const command = (input: unknown) => {
+      const i = (input ?? {}) as { command?: unknown; run_in_background?: unknown };
+      return typeof i.command === 'string' && i.run_in_background !== true ? i.command : null;
+    };
+    const after: HookCallback = async (input) => {
+      if (input.hook_event_name === 'PostToolUse') {
+        proof.tool(input.tool_name);
+        const c = input.tool_name === 'Bash' ? command(input.tool_input) : null;
+        if (c) proof.bash(c, true);
+      } else if (input.hook_event_name === 'PostToolUseFailure' && input.tool_name === 'Bash') {
+        const c = command(input.tool_input);
+        if (c) proof.bash(c, false);
+      }
+      return {};
+    };
+    const withProof = (o: WorkerOutcome): WorkerOutcome => ({ ...o, ...proof.result() });
+
     const notes = projectNotes(r.worktree);
     const q = query({
       prompt: workerPrompt(r),
@@ -208,7 +231,11 @@ export class ClaudeWorkerRunner implements WorkerRunner {
         disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'NotebookEdit'],
         permissionMode: 'dontAsk',
         permissionPrompts: 'none',
-        hooks: { PreToolUse: [{ hooks: [hook] }] },
+        hooks: {
+          PreToolUse: [{ hooks: [hook] }],
+          PostToolUse: [{ hooks: [after] }],
+          PostToolUseFailure: [{ hooks: [after] }],
+        },
         maxTurns: o.maxTurns,
         maxBudgetUsd: o.maxBudgetUsd,
         outputFormat: { type: 'json_schema', schema: SCHEMA },
@@ -280,7 +307,7 @@ export class ClaudeWorkerRunner implements WorkerRunner {
           }
         }
       }
-      return outcome;
+      return withProof(outcome);
     } catch (e) {
       return {
         ok: false,

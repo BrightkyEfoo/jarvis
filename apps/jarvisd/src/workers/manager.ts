@@ -5,6 +5,7 @@ import type { ForgeClient, ForgeId } from '@jarvis/connectors';
 import type { KillSwitch } from '@jarvis/policy';
 import { AI_TRAILER, BRANCH, type Git, type GitAuth, slug } from './git.ts';
 import { PROTECTED, workerGuard } from './guard.ts';
+import { proofOf } from './proof.ts';
 import type { WorkerOutcome, WorkerRunner } from './runner.ts';
 import { fileLogger } from './runner.ts';
 import type { Task, TaskStore } from './store.ts';
@@ -334,6 +335,10 @@ export class WorkerManager {
       const message = await d.git.run(['log', '-1', '--format=%B'], { cwd: worktree, signal });
       if (AI_TRAILER.test(message)) throw new Error('le message de commit contient une mention IA');
 
+      // Proof: the checks the worker really ran decide whether the PR is ready or a draft.
+      const proof = proofOf(outcome.checks, outcome.editedAfterChecks);
+      log(`preuve : ${proof.short}`);
+
       // 4. Publish: a jarvis/… branch, then a pull request (never a merge).
       this.#step(task, 'publication', signal);
       await d.git.run(['push', info.cloneUrl, `HEAD:refs/heads/${branch}`], {
@@ -346,10 +351,11 @@ export class WorkerManager {
         head: branch,
         base,
         title,
-        draft: d.draftPr,
+        draft: d.draftPr || proof.status !== 'verified',
         body: [
           body || title,
-          outcome.tests ? `\n### Vérifications\n${clean(outcome.tests)}` : '',
+          `\n### Vérifié par Jarvis\nCommandes réellement exécutées, dernier résultat de chacune :\n${proof.markdown}`,
+          outcome.tests ? `\n### Compte rendu des vérifications\n${clean(outcome.tests)}` : '',
           `\n---\nTâche : ${task.prompt.slice(0, 500)}`,
         ].join('\n'),
       });
@@ -367,12 +373,13 @@ export class WorkerManager {
           pr: pr.url,
           files: files.length,
           costUsd: outcome.costUsd,
+          proof: proof.status,
         },
       });
       this.#emit(
         d.store.update(task.id, {
           status: 'done',
-          step: 'PR ouverte',
+          step: `PR ${proof.status === 'verified' ? 'ouverte' : 'en brouillon'}, ${proof.short}`,
           prUrl: pr.url,
           endedAt: new Date().toISOString(),
         }),

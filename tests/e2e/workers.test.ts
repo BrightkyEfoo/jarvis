@@ -39,6 +39,10 @@ const done = (
   tests: 'pnpm test : 12 tests OK',
   costUsd: 0.42,
   turns: 9,
+  checks: [
+    { command: 'pnpm test', ok: true },
+    { command: 'pnpm lint', ok: true },
+  ],
   ...extra,
 });
 
@@ -125,6 +129,34 @@ async function until(id: string, status: string[], timeoutMs = 20_000) {
 const lastId = () => h.rt.workers.store.list(1)[0]?.id ?? '';
 
 describe('workers (S6)', () => {
+  it('no proof, no ready PR: a worker that ran no check or ended red opens a draft that says so', async () => {
+    await setup();
+    runner.script = async (r) => {
+      write(r, 'src/a.ts', 'export const a = 1;\n');
+      return done('Ajoute a', 'Ajoute a.', { checks: [] });
+    };
+    await ask('call worker_start {"repo":"acme/app","task":"Ajoute une constante a dans src"}');
+    const t1 = await until(lastId(), ['done', 'failed']);
+    expect(h.forge.opened[0]?.draft).toBe(true);
+    expect(h.forge.opened[0]?.body).toContain('⚠️ **Non vérifié**');
+    expect(t1.step).toBe('PR en brouillon, non vérifiée (aucun test lancé)');
+
+    runner.script = async (r) => {
+      write(r, 'src/b.ts', 'export const b = 2;\n');
+      return done('Ajoute b', 'Ajoute b.', {
+        checks: [
+          { command: 'pnpm test', ok: false },
+          { command: 'pnpm lint', ok: true },
+        ],
+      });
+    };
+    await ask('call worker_start {"repo":"acme/app","task":"Ajoute une constante b dans src"}');
+    const t2 = await until(lastId(), ['done', 'failed']);
+    expect(h.forge.opened[1]?.draft).toBe(true);
+    expect(h.forge.opened[1]?.body).toContain('- ❌ `pnpm test`');
+    expect(t2.step).toBe('PR en brouillon, 1 vérification(s) en échec');
+  });
+
   it("task → worktree → one clean commit in Brightky's name → jarvis/ branch → PR, no approval", async () => {
     const bare = await setup();
     runner.script = async (r) => {
@@ -171,6 +203,9 @@ describe('workers (S6)', () => {
       draft: false,
     });
     expect(pr?.body).toContain('pnpm test : 12 tests OK');
+    expect(pr?.body).toContain('### Vérifié par Jarvis');
+    expect(pr?.body).toContain('- ✅ `pnpm test`\n- ✅ `pnpm lint`');
+    expect(t.step).toBe('PR ouverte, vérifiée (2 commandes au vert)');
     expect(pr?.body).not.toMatch(/claude|anthropic|generated/i);
 
     const log = git(bare, 'log', '--format=%an <%ae>|%s|%b', `refs/heads/${t.branch}`, '-n', '2');
