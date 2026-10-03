@@ -166,9 +166,19 @@ struct Snapshot: Decodable {
     /// GitHub / GitLab / Trello (absent from older daemons).
     var forges: [ForgeAccount]? = nil
     var workers: [WorkerTask]? = nil
+    var ops: OpsInfo? = nil
     let memory: MemoryInfo
     let tools: [ToolInfo]
     let signature: String
+}
+
+/// LinkedIn, declared servers, vault names (absent from older daemons).
+struct OpsInfo: Decodable, Hashable {
+    struct LinkedIn: Decodable, Hashable { let connected: Bool; let name: String?; let daysLeft: Int? }
+    struct Server: Decodable, Hashable, Identifiable { let id: String; let env: String; let host: String; let apps: [String] }
+    let linkedin: LinkedIn
+    let servers: [Server]
+    let vault: [String]
 }
 
 struct WorkerTask: Decodable, Identifiable, Hashable {

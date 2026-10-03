@@ -535,6 +535,40 @@ struct AccountsView: View {
                     }
                 }
             }
+            if let ops = store.ops {
+                Section("LinkedIn") {
+                    HStack {
+                        Image(systemName: ops.linkedin.connected ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(ops.linkedin.connected ? ((ops.linkedin.daysLeft ?? 99) < 10 ? .orange : .green) : .secondary)
+                        Text(ops.linkedin.connected ? "Connecté\(ops.linkedin.name.map { " (\($0))" } ?? "")" : "Non connecté")
+                        Spacer()
+                        if let d = ops.linkedin.daysLeft { Text("jeton : \(d) j").font(.caption).foregroundStyle(d < 10 ? .orange : .secondary) }
+                        if !ops.linkedin.connected || (ops.linkedin.daysLeft ?? 99) < 10 {
+                            Text("jarvis linkedin connect").font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Section("Serveurs (déploiement)") {
+                    if ops.servers.isEmpty {
+                        Text("Aucun serveur déclaré : politique, section ops.servers (docs/SETUP-OPS.md)").font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(ops.servers) { s in
+                        HStack {
+                            Text(s.env.uppercased()).font(.caption2.weight(.bold))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(s.env == "prod" ? Color.red.opacity(0.25) : Color.blue.opacity(0.2), in: Capsule())
+                            VStack(alignment: .leading) {
+                                Text("\(s.id) · \(s.host)")
+                                Text(s.apps.isEmpty ? "aucune app" : s.apps.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                Section("Coffre (noms seulement)") {
+                    Text(ops.vault.isEmpty ? "Vide — jarvis vault set <nom>" : ops.vault.joined(separator: ", "))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section("Outils de Jarvis (\(store.tools.count))") {
                 ForEach(store.tools) { t in
                     VStack(alignment: .leading) {

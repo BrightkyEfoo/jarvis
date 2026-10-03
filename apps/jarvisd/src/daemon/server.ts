@@ -417,6 +417,7 @@ function dashboardSnapshot(rt: Runtime) {
     },
     mail: rt.mail.status,
     forges: rt.forgeStatus(),
+    ops: rt.opsStatus(),
     workers: rt.workers.store.list(8).map((t) => ({
       id: t.id,
       repo: t.repo,

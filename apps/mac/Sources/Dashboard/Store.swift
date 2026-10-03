@@ -17,6 +17,7 @@ final class Store: ObservableObject {
     @Published var mail: [MailAccount] = []
     @Published var forges: [ForgeAccount] = []
     @Published var workers: [WorkerTask] = []
+    @Published var ops: OpsInfo?
     @Published var facts: [Fact] = []
     @Published var notesDir = ""
     @Published var tools: [ToolInfo] = []
@@ -111,6 +112,7 @@ final class Store: ObservableObject {
         mail = s.mail
         forges = s.forges ?? []
         workers = s.workers ?? []
+        ops = s.ops
         facts = s.memory.facts
         notesDir = s.memory.notesDir
         tools = s.tools

@@ -274,6 +274,12 @@ export interface Runtime {
   bridge: ActuatorBridge;
   actuatorInfo(): { connected: boolean; version?: string; capabilities?: string[] };
   forgeStatus(): { id: string; connected: boolean; connect: string }[];
+  /** LinkedIn connection, declared servers and vault names (never values), for the dashboard. */
+  opsStatus(): {
+    linkedin: { connected: boolean; name?: string; daysLeft?: number };
+    servers: { id: string; env: string; host: string; apps: string[] }[];
+    vault: string[];
+  };
   workers: { manager: WorkerManager; store: TaskStore };
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
@@ -586,6 +592,25 @@ export function createRuntime(o: RuntimeOptions): Runtime {
         connected: id === 'trello' ? forges.trello !== null : forges.forges.has(id),
         connect: `jarvis ${id} connect`,
       })),
+    opsStatus: () => {
+      const t = o.linkedin?.token() ?? linkedinToken();
+      return {
+        linkedin: t
+          ? {
+              connected: true,
+              ...(t.name && { name: t.name }),
+              daysLeft: Math.floor((t.expires_at - Date.now()) / 86_400_000),
+            }
+          : { connected: false },
+        servers: policy.ops.servers.map((s) => ({
+          id: s.id,
+          env: s.env,
+          host: `${s.user ? `${s.user}@` : ''}${s.host}`,
+          apps: s.apps.map((a) => a.id),
+        })),
+        vault: new Vault(o.secrets, redactor).names(),
+      };
+    },
     actuatorInfo: () =>
       actuator.info
         ? { connected: actuator.connected, ...actuator.info }
