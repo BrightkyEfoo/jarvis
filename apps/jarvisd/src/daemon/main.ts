@@ -1,7 +1,8 @@
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { SEALED_POLICY_PATH } from '@jarvis/policy';
 import { KeychainStore } from '@jarvis/secrets';
+import { FIGMA_PORT } from '../figma/catalogue.ts';
 import { environmentProblems } from '../guards.ts';
 import { appPaths } from '../paths.ts';
 import { createRuntime } from './runtime.ts';
@@ -35,6 +36,13 @@ export async function runDaemon(opts: { dev: boolean }): Promise<void> {
     console.log(`⏹ STOP is engaged: ${rt.killswitch.reason} — \`jarvis resume\` to restart`);
   if (!rt.brain)
     console.log('⚠ no subscription token: `jarvis auth set-token` then restart the daemon');
+  // Figma bridge (ADR-034): loopback only, fresh token per launch in run/figma-token (0600).
+  await rt.figma
+    .listen({ port: FIGMA_PORT, tokenFile: join(dirname(paths.socket), 'figma-token') })
+    .then(
+      (port) => console.log(`Figma bridge on 127.0.0.1:${port}`),
+      (e: Error) => console.error(`⚠ Figma bridge off: ${e.message}`),
+    );
 
   // Warm the model process in the background so the first question has no cold start.
   rt.brain?.warm().then(

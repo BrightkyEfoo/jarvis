@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  body {
+    margin: 0;
+    padding: 12px;
+    font: 12px/1.45 Inter, system-ui, -apple-system, sans-serif;
+    color: var(--figma-color-text, #1e1e1e);
+    background: var(--figma-color-bg, #fff);
+  }
+  h1 { font-size: 13px; margin: 0 0 8px; }
+  p { margin: 0 0 8px; }
+  .muted { color: var(--figma-color-text-secondary, #6b6b6b); }
+  .ok::before, .wait::before, .error::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .ok::before { background: var(--figma-color-icon-success, #14ae5c); }
+  .wait::before { background: var(--figma-color-icon-warning, #ffa629); }
+  .error::before { background: var(--figma-color-icon-danger, #f24822); }
+  label { display: block; font-weight: 600; margin-bottom: 4px; }
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--figma-color-border, #e6e6e6);
+    border-radius: 5px;
+    background: var(--figma-color-bg, #fff);
+    color: inherit;
+    font: inherit;
+    margin-bottom: 8px;
+  }
+  code { font-size: 11px; word-break: break-all; }
+  button {
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--figma-color-bg-brand, #0d99ff);
+    color: var(--figma-color-text-onbrand, #fff);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.link {
+    background: none;
+    color: var(--figma-color-text-brand, #0d99ff);
+    padding: 0;
+    font-weight: 400;
+  }
+</style>
+</head>
+<body>
+<h1>Jarvis</h1>
+<p id="status" class="wait" role="status">Démarrage…</p>
+<p id="file" class="muted"></p>
+<form id="token-form" hidden>
+  <label for="token">Jeton de Jarvis</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="200">
+  <p class="muted">Dans un terminal :
+    <code>pbcopy &lt; ~/Library/Application\ Support/Jarvis/run/figma-token</code>,
+    puis colle-le ici. Il change à chaque redémarrage de Jarvis.</p>
+  <button type="submit">Connecter</button>
+</form>
+<p><button id="retake" type="button" hidden>Reprendre la main</button></p>
+<p id="last" class="muted"></p>
+<p><button id="change" class="link" type="button" hidden>Changer de jeton</button></p>
+<script>
+  // Network side of the plugin: long-polls jarvisd on loopback and hands each operation to
+  // code.js, which validates it against the fixed catalogue and runs it. No code is evaluated here.
+  const BASE = 'http://localhost:47830';
+  const CATALOGUE_VERSION = 1;
+  const PLUGIN_VERSION = '1.0.0';
+  const LABELS = {
+    status: 'état du fichier',
+    read: 'lecture de la sélection',
+    variables: 'lecture des variables',
+    export_png: 'export PNG',
+    create_frame: 'création d’un frame',
+    set_text: 'modification d’un texte',
+    rename: 'renommage',
+    bind_variable: 'liaison d’une variable',
+    create_component: 'création d’un composant',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const random = new Uint8Array(16);
+  crypto.getRandomValues(random);
+  const session = Array.from(random, (b) => b.toString(16).padStart(2, '0')).join('');
+  const waiting = new Map();
+  let token = '';
+  let generation = 0;
+  let retryMs = 2000;
+
+  function setStatus(text, kind) {
+    const el = $('status');
+    el.textContent = text;
+    el.className = kind;
+  }
+
+  function post(path, body, signal) {
+    return fetch(BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal,
+    });
+  }
+
+  function askToken(reason) {
+    generation++;
+    setStatus(reason, 'error');
+    $('token-form').hidden = false;
+    $('change').hidden = true;
+    $('retake').hidden = true;
+    $('token').focus();
+  }
+
+  function offline(gen) {
+    if (gen !== generation) return;
+    setStatus(`Jarvis injoignable (jarvisd arrêté ?). Nouvel essai dans ${retryMs / 1000} s.`, 'wait');
+    setTimeout(() => {
+      if (gen === generation) connect();
+    }, retryMs);
+    retryMs = Math.min(retryMs * 2, 15000);
+  }
+
+  function runOp(op) {
+    return new Promise((resolve) => {
+      waiting.set(op.id, resolve);
+      parent.postMessage({ pluginMessage: { type: 'op', op } }, '*');
+    });
+  }
+
+  async function connect() {
+    const gen = ++generation;
+    $('token-form').hidden = true;
+    $('retake').hidden = true;
+    setStatus('Connexion à Jarvis…', 'wait');
+    let res;
+    try {
+      res = await post('/hello', { session, catalogue: CATALOGUE_VERSION, plugin: PLUGIN_VERSION });
+    } catch (_e) {
+      return offline(gen);
+    }
+    if (res.status === 401) return askToken('Jeton refusé : Jarvis a peut-être redémarré.');
+    if (res.status === 409) {
+      setStatus('Ce plugin n’est plus à jour : recharge-le (Plugins › Development).', 'error');
+      return;
+    }
+    if (!res.ok) return offline(gen);
+    retryMs = 2000;
+    $('change').hidden = false;
+    setStatus('Connecté à Jarvis', 'ok');
+    poll(gen);
+  }
+
+  async function poll(gen) {
+    while (gen === generation) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 40000);
+      let res;
+      try {
+        res = await post('/poll', { session }, ac.signal);
+      } catch (_e) {
+        clearTimeout(timer);
+        return offline(gen);
+      }
+      clearTimeout(timer);
+      if (gen !== generation) return;
+      if (res.status === 401) return askToken('Jeton refusé : Jarvis a peut-être redémarré.');
+      if (res.status === 409) {
+        generation++;
+        setStatus('Une autre fenêtre Figma utilise Jarvis.', 'wait');
+        $('retake').hidden = false;
+        return;
+      }
+      if (!res.ok) return offline(gen);
+      const body = await res.json();
+      const op = body.op;
+      if (!op || typeof op.id !== 'string') continue;
+      setStatus(`Jarvis : ${LABELS[op.kind] || 'opération'}…`, 'ok');
+      const r = await runOp(op);
+      $('last').textContent = `${r.ok ? 'Fait' : 'Refusé'} : ${LABELS[op.kind] || 'opération'} (${new Date().toLocaleTimeString('fr-FR')})`;
+      setStatus('Connecté à Jarvis', 'ok');
+      try {
+        await post('/result', {
+          session,
+          id: op.id,
+          ok: r.ok,
+          result: r.result,
+          code: r.code,
+          error: r.error,
+        });
+      } catch (_e) {
+        return offline(gen);
+      }
+    }
+  }
+
+  window.onmessage = (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    const msg = data.pluginMessage;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'result') {
+      const resolve = waiting.get(msg.id);
+      if (resolve) {
+        waiting.delete(msg.id);
+        resolve(msg);
+      }
+    } else if (msg.type === 'init') {
+      $('file').textContent = msg.file ? `Fichier : ${msg.file}` : '';
+      token = msg.token || '';
+      if (token) connect();
+      else askToken('Colle le jeton de Jarvis pour connecter ce fichier.');
+    }
+  };
+
+  $('token-form').onsubmit = (event) => {
+    event.preventDefault();
+    token = $('token').value.trim();
+    $('token').value = '';
+    if (!token) return;
+    parent.postMessage({ pluginMessage: { type: 'save-token', token } }, '*');
+    connect();
+  };
+  $('retake').onclick = () => connect();
+  $('change').onclick = () => askToken('Colle le nouveau jeton de Jarvis.');
+
+  parent.postMessage({ pluginMessage: { type: 'load-token' } }, '*');
+</script>
+</body>
+</html>

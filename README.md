@@ -28,6 +28,7 @@ Détails : [docs/SECURITY.md](docs/SECURITY.md) · décisions : [docs/DECISIONS.
 · historique : [docs/CHANGELOG.md](docs/CHANGELOG.md)
 · serveurs et déploiements : [docs/SETUP-OPS.md](docs/SETUP-OPS.md)
 · LinkedIn : [docs/SETUP-LINKEDIN.md](docs/SETUP-LINKEDIN.md)
+· Figma : [docs/SETUP-FIGMA.md](docs/SETUP-FIGMA.md)
 
 ## Installation (une fois)
 

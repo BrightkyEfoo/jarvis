@@ -33,6 +33,7 @@ import {
 } from '@jarvis/policy';
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import { type Actuator, ActuatorBridge } from '../computer/bridge.ts';
+import { FigmaBridge } from '../figma/bridge.ts';
 import { LinkedInStore } from '../linkedin/store.ts';
 import { ed25519KeyPair, ForgeSecrets, knownHostsFor } from '../ops/secrets.ts';
 import { OpenSsh } from '../ops/ssh.ts';
@@ -50,6 +51,7 @@ import type { AppPaths } from '../paths.ts';
 import { diffSecretScanner } from '../security/pr-checks.ts';
 import { binaryLocator, type Locate } from '../security/run.ts';
 import { createComputerTools } from '../tools/computer.ts';
+import { createFigmaTools } from '../tools/figma.ts';
 import { createForgeTools, workBriefing } from '../tools/forge.ts';
 import { createTools } from '../tools/index.ts';
 import { createLinkedInTools } from '../tools/linkedin.ts';
@@ -281,6 +283,8 @@ export interface Runtime {
     vault: string[];
   };
   workers: { manager: WorkerManager; store: TaskStore };
+  /** Free Figma bridge (ADR-034): main.ts opens its loopback listener. */
+  figma: FigmaBridge;
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
   quotaWarning: string | null;
@@ -442,6 +446,10 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     assetsDir: join(paths.scratch, 'linkedin'),
   }))
     gate.register(t);
+  const figma = new FigmaBridge({
+    audit: (outcome, data) => audit.append({ event: 'system', outcome, data }),
+  });
+  for (const t of createFigmaTools({ bridge: figma })) gate.register(t);
 
   for (const t of createForgeTools({ ...forges, maxDiffChars: policy.forges.max_diff_chars }))
     gate.register(t);
@@ -586,6 +594,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     brain: null,
     bridge,
     workers: { manager: workerManager, store: taskStore },
+    figma,
     forgeStatus: () =>
       (['github', 'gitlab', 'trello'] as const).map((id) => ({
         id,
@@ -620,6 +629,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     stop: (reason) => killswitch.engage(reason),
     close: async () => {
       await rt.brain?.close();
+      await figma.close();
       audit.append({ event: 'system', outcome: 'shutdown' });
       await workerManager.shutdown();
       audit.close();

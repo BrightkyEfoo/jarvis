@@ -79,6 +79,12 @@ enum VoiceTests {
               Wording.fr("Snap Safari to the left half on display 2"))
         check(Wording.fr("Close the front window of Slack") == "Fermer la fenêtre de Slack", "close window")
         check(Wording.fr("Look at display 1") == "Regarder l'écran 1", "look display")
+        check(Wording.fr("Deploy portfolio on bb-srv (prod): /srv/portfolio/deploy.sh") == "Déployer portfolio sur bb-srv (prod) : /srv/portfolio/deploy.sh", "deploy fr",
+              Wording.fr("Deploy portfolio on bb-srv (prod): /srv/portfolio/deploy.sh"))
+        check(Wording.fr("Post on LinkedIn (42 chars + 1 image(s) : /x.png): \"Hello\"") == "Publier sur LinkedIn (42 caractères + 1 image(s) : /x.png) : \"Hello\"", "linkedin fr",
+              Wording.fr("Post on LinkedIn (42 chars + 1 image(s) : /x.png): \"Hello\""))
+        check(Wording.fr("Figma: rename FRAME \"Hero\" (Jarvis drafts) → \"Hero v2\"") == "Figma : renommer FRAME \"Hero\" (Jarvis drafts) → \"Hero v2\"", "figma fr")
+        check(Wording.fr("Set github secret DB_PASSWORD on a/b from vault \"db\"") == "Définir le secret github DB_PASSWORD sur a/b depuis le coffre « db »", "secret fr")
         check(Wording.fr("Read mail perso#m1") == "Lire le mail perso#m1", "read mail before read")
         check(Wording.fr("Triage mail all accounts (24 h)") == "Tri des mails : tous les comptes (24 h)", "triage", Wording.fr("Triage mail all accounts (24 h)"))
 

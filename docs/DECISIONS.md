@@ -914,6 +914,106 @@ identifiants. Les incidents de 2026 du rapport « Jarvis pour les équipes tech 
 - stocker des clés de prod longue durée hors du Trousseau ;
 - laisser Claude Code déployer depuis un worker.
 
+## ADR-034 — Figma gratuit : plugin de développement et pont local (03/10/2026)
+
+**Contexte.** Brightky demande que Jarvis « sache utiliser Figma ». La recherche « Jarvis pour les
+équipes tech » (proposition 14) établit les limites des voies officielles :
+- le serveur MCP officiel est plafonné à environ 20 appels d'outil par mois sur le plan gratuit ;
+- la lecture d'un fichier par l'API REST est rationnée de la même façon ;
+- un usage quotidien demande un siège Dev (12 $/mois, lecture seule) ou Full (16 $/mois) ;
+- l'API Variables est réservée à l'Enterprise.
+
+Tout cela sort de la règle du zéro coût. La **Plugin API** est gratuite et sans quota, à deux
+conditions : l'app desktop est ouverte, et le plugin est chargé depuis un manifeste local.
+
+**Décision.**
+- **Le plugin** (`apps/figma-plugin/`) : `manifest.json`, `code.js` (fil principal) et
+  `ui.html` (iframe). C'est du JS simple, sans étape de build, et sans `?.` ni `??` pour rester
+  dans ce que le bac à sable accepte depuis longtemps.
+  - Il utilise `documentAccess: "dynamic-page"`, donc les API asynchrones.
+  - `networkAccess` vaut `allowedDomains: ["none"]` et
+    `devAllowedDomains: ["http://localhost:47830"]`.
+- **Le pont** (`apps/jarvisd/src/figma/bridge.ts`) : un long-poll HTTP depuis l'iframe (`/hello`,
+  `/poll`, `/result`), sur 127.0.0.1 seulement.
+  - Node 24 n'a pas de serveur WebSocket et aucune dépendance n'est ajoutée. Une opération à la
+    fois, en local : la latence du long-poll est négligeable.
+  - Le port est fixe (47830), car le manifeste doit le nommer.
+  - `main.ts` ouvre le pont après le socket. S'il échoue, le daemon tourne quand même, sans Figma.
+- **L'admission** est une fonction pure, testée : adresse de boucle locale, Host (DNS rebinding),
+  Origin (`null` pour l'iframe du plugin, figma.com toléré, toute page web refusée), POST JSON,
+  puis jeton Bearer comparé en temps constant. La pré-requête CORS répond aussi à Private Network
+  Access de Chromium.
+- **Le jeton** : 256 bits, un nouveau à chaque démarrage, dans `run/figma-token` (0600, création
+  exclusive, effacé à l'arrêt). Brightky le colle une fois par démarrage, et le plugin le garde.
+  - C'est l'option la plus simple qui tienne : le plugin ne peut lire aucun fichier.
+  - Un jeton qui meurt avec le daemon borne une fuite.
+  - Pas de Trousseau ni de dépendance.
+- **Un catalogue fixe** de 9 opérations (`catalogue.ts`, version 1) :
+  - lire : `status`, `read`, `variables`, `export_png` ;
+  - écrire : `create_frame`, `set_text`, `rename`, `bind_variable`, `create_component`.
+
+  Le plugin le revalide (`code.js`) et refuse tout le reste. Des tests font tourner `code.js` dans
+  un bac à sable `node:vm` et vérifient qu'il accepte et refuse exactement ce que les schémas zod
+  du daemon acceptent et refusent. Aucun outil ne transporte de JavaScript : c'est N4 par
+  construction, sur le principe du catalogue JXA fixe (ADR-024).
+- **Les niveaux, décidés par le code** :
+  - lectures N0, `ingestsExternal`, parce que les maquettes sont le contenu d'autres personnes ;
+  - écriture N1 dans la page « Jarvis drafts », créée par le plugin et marquée par une donnée
+    privée du plugin ;
+  - N2 ailleurs, avec l'avant → après exact dans le résumé ;
+  - un calque inconnu est refusé (`figma.unknown_node`) : il faut le lire d'abord.
+- **Le réel décide**, comme pour le navigateur (ADR-024) :
+  - l'empreinte lue (FNV-1a du type, du nom et du texte) repart avec l'écriture, et le plugin
+    refuse si le calque a changé (`figma.stale`) ;
+  - le niveau fixe la portée envoyée : à N1, le plugin refuse un calque qui n'est pas dans la page
+    Jarvis drafts (`figma.not_draft`) ;
+  - ce que Jarvis sait des calques est oublié quand le plugin change de session : les
+    identifiants de nœuds ne valent que dans un fichier.
+- **Les design tokens** : la conversion en DTCG 2025.10 se fait dans le daemon (`tokens.ts`,
+  testée), et le plugin renvoie les valeurs brutes.
+  - Couleurs en sRGB avec `hex`, tailles en `dimension` px selon les portées Figma.
+  - Alias en `{groupe.token}`. Les autres modes et `codeSyntax` vont sous
+    `$extensions["com.figma"]`.
+  - Les variables STRING et BOOLEAN prennent les types non standard `string` et `boolean`.
+- **Les exports** : échelle de 0,25 à 4, 2048 px au plus, 3,5 Mo au plus. L'image va au modèle,
+  et l'audit ne garde que son empreinte.
+- **Annuler** : `figma.commitUndo()` après chaque écriture, donc une étape ⌘Z par action.
+- **Le flux** « lis la maquette et génère le composant » : `figma_read_selection` et
+  `figma_variables`, puis `worker_start` avec la spec extraite dans la consigne. La session est
+  teintée, donc la consigne arrive encadrée comme externe (ADR-027).
+
+**Écarté.**
+- **Le serveur MCP officiel et l'API REST** : quotas et sièges payants. Un client MCP maison qui
+  se ferait passer pour un client autorisé serait fragile et contraire à l'esprit des conditions.
+- **Un outil qui exécute du JavaScript** de la Plugin API (comme `use_figma`) : N4. Une maquette
+  piégée pourrait faire écrire n'importe quoi, n'importe où.
+- **Talk to Figma MCP et les ponts open source** : ils passent par un WebSocket et des
+  dépendances npm, avec un large éventail de commandes, sans niveaux ni jeton.
+- **Le WebSocket** : il faudrait un paquet ou une implémentation maison du protocole, et le
+  long-poll suffit.
+- **Un jeton persistant**, dans le Trousseau ou un fichier stable : moins de copier-coller, mais
+  une fuite resterait valable indéfiniment.
+- **Un serveur MCP stdio pour les workers** (piste du rapport) : reporté. Le worker reçoit la spec
+  dans sa consigne, et il n'a pas besoin d'écrire dans Figma.
+- **Toutes les écritures en N2** : la page Jarvis drafts est un bac à sable réversible.
+
+**Tests** :
+- le pont sur un vrai HTTP : jeton, boucle locale, Host, Origin, fichier du jeton, délais quand
+  le plugin n'est pas connecté ou ne répond pas, STOP, remplacement de session ;
+- l'accord entre le catalogue du plugin et celui du daemon, sur une soixantaine de cas ;
+- `code.js` contre une fausse Plugin API : la page « Jarvis drafts » seulement, les empreintes,
+  les polices, la limite de pages ;
+- la conversion DTCG ;
+- 12 tests e2e avec le cerveau scripté et un faux plugin qui interroge le pont.
+
+**Non testé en réel** : le plugin dans Figma, qui n'était pas disponible pour ces tests. À
+vérifier au premier usage :
+- l'import du manifeste (`id` de développement, port dans `devAllowedDomains`) ;
+- les appels de l'iframe vers `http://localhost:47830` depuis l'app desktop (Private Network
+  Access) ;
+- le comportement réel des API `dynamic-page` sur un vrai fichier ;
+- le message quand un fichier du plan Starter a déjà ses 3 pages.
+
 ## ADR-035 — Kit de scanners DevSecOps locaux (03/10/2026)
 
 **Contexte** (rapport « Jarvis pour les équipes tech », propositions 8, 9 et 10) :

@@ -264,7 +264,51 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   demandent deux clics, pour éviter un arrêt par erreur (la reprise exige le PIN). ⌃⎋ reste
   immédiat. La raison enregistrée dit d'où vient l'arrêt.
 
+## Figma (ADR-034)
+
+- **Pont local** : il écoute sur 127.0.0.1 seulement, sur un port fixe (47830) que le manifeste du
+  plugin nomme dans `devAllowedDomains`. `allowedDomains` vaut `["none"]` : le plugin n'a aucun
+  accès à Internet.
+- **Admission**, dans cet ordre :
+  - adresse de boucle locale ;
+  - Host `127.0.0.1:47830` ou `localhost:47830`, contre le DNS rebinding ;
+  - Origin absente, `null` (l'iframe du plugin) ou figma.com : une page web est refusée avant
+    même la lecture du jeton ;
+  - POST en JSON seulement ;
+  - jeton Bearer, comparé en temps constant.
+
+  Chaque refus est audité, au plus une fois par minute et par raison.
+- **Jeton** : 256 bits aléatoires, un nouveau à chaque démarrage. Il est écrit dans
+  `run/figma-token`, en 0600, créé en exclusif : un lien symbolique planté à sa place est
+  remplacé, jamais suivi. Il est effacé à l'arrêt. Brightky le colle dans le plugin, qui le garde
+  dans le stockage local de Figma.
+- **Pas de code venu de l'extérieur** :
+  - un catalogue fixe de 9 opérations ; aucun outil ne porte de JavaScript, qui reste N4 ;
+  - le plugin revalide chaque opération contre le même catalogue et refuse le reste (clés en
+    trop, types, bornes, version) ;
+  - des tests vérifient que le plugin et le daemon acceptent et refusent la même chose.
+- **Le réel décide** :
+  - un calque doit avoir été lu avant d'être modifié ;
+  - son empreinte (type, nom, texte) repart avec l'écriture : s'il a changé depuis, le plugin
+    refuse ;
+  - un niveau N1 n'est valable que dans la page « Jarvis drafts », marquée par une donnée privée
+    du plugin : ailleurs, le plugin refuse (`figma.not_draft`) ;
+  - hors de cette page, toute modification est N2, avec l'avant → après exact.
+- **Taint** : tout ce qui est lu dans Figma (noms, textes, variables, export) est une donnée
+  externe. La session est teintée : N3 est refusé ensuite et N2 exige un humain. Une consigne de
+  worker écrite après une lecture est encadrée comme externe (ADR-027).
+- **Messages du plugin** : le daemon ne relaie au modèle que des messages fixes par code
+  d'erreur, car le texte libre du plugin peut citer le fichier. Les réponses du plugin sont
+  validées par schéma et bornées.
+- **Exports** : PNG de 2048 px et 3,5 Mo au plus, envoyés au modèle, jamais dans l'audit (empreinte
+  et taille seulement).
+- **Un seul fichier à la fois** : le dernier plugin connecté remplace l'autre. Ce qui était en
+  attente pour l'ancien échoue, et seule la session qui a reçu une opération peut y répondre.
+
+Risque résiduel : R15 (tableau des risques connus).
+
 ## Scanners de sécurité (ADR-035)
+
 - **Catalogue fixe** (`apps/jarvisd/src/security/catalogue.ts`) :
   - les seuls argv possibles sont écrits dans le code ; le modèle choisit le dossier, les contrôles,
     `offline` et une référence d'image validée, rien d'autre ;
@@ -387,6 +431,7 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 | R12 | Une capture d'écran peut montrer des données sensibles affichées dans une app autorisée | Apps sensibles exclues, captures hors audit | Masquage des zones sensibles (plus tard) |
 | R13 | Mains libres : quelqu'un dans la pièce, une vidéo ou la télé peut dire « Jarvis, … » | Le nom doit ouvrir la phrase ; N2 demande un « oui », N3 jamais à la voix, N4 interdit ; ⌃⎋ STOP ; mode désactivable | Reconnaissance de la voix de Brightky (S11) |
 | R14 | `workers.ui_checks` : les commandes d'une tâche frontend joignent tous les ports de 127.0.0.1 (le SDK ne filtre pas la boucle locale par port), et un serveur de dev mal configuré peut écouter sur le réseau local | Désactivé par défaut, seulement pour un frontend détecté ; garde-fou sur Chrome, les URL, les hôtes d'écoute et les téléchargements ; profils de navigateur illisibles ; ouverture inscrite au journal d'audit (`worker.ui`) | Demander un filtre par port pour `allowLocalBinding`, ou un profil `sandbox-exec` propre au serveur de dev (S12) |
+| R15 | Un process local qui occuperait le port 47830 avant jarvisd recevrait le jeton collé dans le plugin, et pourrait lui envoyer des opérations du catalogue sans passer par le gate | Catalogue fixe revalidé par le plugin : ni suppression ni code. Chaque écriture s'annule (⌘Z). Si le port est pris, le daemon affiche « Figma bridge off » au démarrage | S12 : le plugin authentifie le daemon par défi-réponse HMAC, et le jeton ne circule plus |
 
 ## Signaler un problème
 

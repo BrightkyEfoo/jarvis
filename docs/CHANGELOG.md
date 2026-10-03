@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.20.0 — Figma gratuit (03/10/2026)
+
+### Ajouté
+- **Figma, gratuit et sans quota** : un plugin de développement (`apps/figma-plugin/`), chargé
+  dans l'app desktop, relié à jarvisd par un pont local (127.0.0.1:47830, un jeton par
+  démarrage). Le serveur MCP officiel est plafonné à environ 20 appels par mois sur le plan
+  gratuit.
+  - **Lire** (N0, la session est teintée) :
+    - `figma_status` : fichier, page, sélection ;
+    - `figma_read_selection` : l'arbre des calques, borné en profondeur et en taille (tailles,
+      auto layout, textes, couleurs en hex, effets, variables liées, styles, propriétés de
+      composants) ;
+    - `figma_variables` : les variables locales en design tokens W3C (DTCG 2025.10) ;
+    - `figma_export` : le PNG d'un calque, montré au modèle comme une capture ; l'audit n'en
+      garde que l'empreinte.
+  - **Écrire** :
+    - `figma_create_frame` : un frame en auto layout, à partir d'une petite spec JSON validée
+      (frames, textes, rectangles, couleurs, marges, espacements), toujours dans la page
+      « Jarvis drafts » (N1) ;
+    - `figma_set_text`, `figma_rename`, `figma_bind_variable`, `figma_create_component` : N1 dans
+      cette page ; ailleurs, N2 avec l'avant → après exact à l'écran de validation.
+  - **« Lis la maquette sélectionnée et génère le composant »** : Jarvis lit la sélection et les
+    variables, puis confie le code à un worker avec la spec extraite dans la consigne.
+  - Chaque action de Jarvis est une étape d'annulation dans Figma (⌘Z).
+  - Mise en route : `docs/SETUP-FIGMA.md`.
+
+### À venir
+- Traduire les résumés « Figma: … » dans `Wording.swift` (tableau de bord, île, voix).
+- Faire authentifier le daemon par le plugin (défi-réponse), voir le risque ci-dessous.
+
 ## 0.19.0 — Kit DevSecOps (03/10/2026)
 
 ### Ajouté
