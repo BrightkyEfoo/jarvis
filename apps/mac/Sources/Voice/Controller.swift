@@ -390,6 +390,13 @@ final class Controller {
         }
     }
 
+    /// Something Jarvis says on its own (quota…): only when nothing else is going on.
+    func announce(_ text: String) {
+        guard state == .idle, currentAsk == nil, pendingApproval == nil else { return }
+        followUp = false
+        say(text)
+    }
+
     private func say(_ sentence: String) {
         recentSpeech = String((recentSpeech + " " + sentence).suffix(600))
         onSaid(sentence)

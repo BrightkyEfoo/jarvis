@@ -364,7 +364,11 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     summarizer,
     triageMax: policy.mail.triage_max,
     status: (signal) => (o.mac ?? realMacOps).status(signal),
-    work: () => workBriefing(forges),
+    work: () =>
+      workBriefing(forges, {
+        tasks: () => taskStore.list(20),
+        quota: () => quota,
+      }),
   })) {
     gate.register(t);
   }

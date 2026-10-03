@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Carbon.HIToolbox
 @preconcurrency import FluidAudio
 import Speech
@@ -33,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var actuator: Actuator?
     var stopKey: HotKey?
     var island: IslandController?
+    private var bag: Set<AnyCancellable> = []
+    /// Windows already announced as nearly full (said once, again after they come back under 70 %).
+    private var quotaSaid: Set<String> = []
     var openWindow: OpenWindowAction?
     private var pendingDashboard = false
 
@@ -86,6 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.start()
             controller = c
         }
+        store.$quota
+            .receive(on: RunLoop.main)
+            .sink { [weak self] q in self?.announceQuota(q) }
+            .store(in: &bag)
         if args.contains("--dashboard") { openDashboard() }
     }
 
@@ -103,6 +111,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopKey?.onPress = { [weak self] in
             self?.actuator?.cancelAll()
             self?.store.stop(from: "⌃⎋")
+        }
+    }
+
+    /// The subscription is the scarce resource: say it once when a window passes 85 %.
+    private func announceQuota(_ windows: [QuotaWindow]) {
+        for w in windows where w.window == "five_hour" || w.window == "seven_day" {
+            guard let u = w.utilization else { continue }
+            if u >= 0.85, !quotaSaid.contains(w.window) {
+                quotaSaid.insert(w.window)
+                let pct = Int(u * 100)
+                controller?.announce(w.window == "five_hour"
+                    ? "Attention : quota de cinq heures à \(pct) pour cent. Les workers attendent, je garde le reste pour toi."
+                    : "Attention : quota de la semaine à \(pct) pour cent.")
+            } else if u < 0.7 {
+                quotaSaid.remove(w.window)
+            }
         }
     }
 

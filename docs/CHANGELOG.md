@@ -26,6 +26,12 @@
   - une CI rouge ou des changements demandés font descendre la PR (à l'auteur d'agir), une PR en
     brouillon passe en dernier ;
   - pour chaque PR : taille, CI et approbations.
+- **Brief tech du matin** : la file de revue classée (avec les zones à risque), les CI rouges de
+  mes PR (avec « ci_failure pour savoir pourquoi »), les changements demandés, les PR
+  Dependabot/Renovate, les résultats des workers sur 24 h et le quota de l'abonnement.
+- **Alerte de quota** : Jarvis le dit une fois, quand la fenêtre de 5 h ou celle de la semaine
+  passe 85 %, et seulement s'il n'est pas occupé. Il le redira si elle repasse sous 70 % puis
+  remonte. Les workers attendent déjà au-delà de la réserve interactive.
 - **« Pourquoi la CI est rouge ? »** (`ci_failure`, N0), pour une PR ou une branche, sur GitHub et
   GitLab : les jobs en échec, leurs annotations (fichier:ligne) et la fin de leur log, nettoyée des
   couleurs et des horodatages. Jarvis explique la cause, puis propose un worker qui corrige sur la

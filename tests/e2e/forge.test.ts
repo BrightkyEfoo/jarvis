@@ -103,6 +103,11 @@ describe('forges (S5)', () => {
   it('the morning briefing includes what waits on GitHub and Trello', async () => {
     const out = await ask('call briefing {}');
     expect(out).toContain('## GitHub : 1 à relire, 1 PR à moi (1 en échec CI), 0 issue(s)');
+    expect(out).toMatch(/- à relire : acme\/app#7 « Fix login timeout », \d+ j · auth, migrations/);
+    expect(out).toContain('- à relire (worker) : BrightkyEfoo/jarvis#3 « Voice v2 »');
+    expect(out).toContain(
+      '- CI rouge sur ma PR BrightkyEfoo/jarvis#3 « Voice v2 » (ci_failure pour savoir pourquoi)',
+    );
     expect(out).toContain('## Trello : 1 carte(s) à moi');
   });
 

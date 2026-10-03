@@ -10,7 +10,8 @@ import {
 } from '@jarvis/connectors';
 import { type Classification, defineTool, forbid, N0, N2, type ToolDef } from '@jarvis/policy';
 import { z } from 'zod';
-import { buildQueue, queueLine } from '../review/queue.ts';
+import { AREA_FR, buildQueue, queueLine } from '../review/queue.ts';
+import type { Task } from '../workers/store.ts';
 
 export interface ForgeToolDeps {
   /** Connected forges only (token in the Keychain). */
@@ -49,25 +50,93 @@ const repoPath = z.string().regex(REPO_PATH, 'owner/repo');
 const trelloId = z.string().regex(/^[0-9a-f]{24}$|^[A-Za-z0-9]{8}$/, 'Trello id');
 
 /** Briefing section: what waits on the forges, and Trello cards assigned to Brightky. */
-export async function workBriefing(d: Omit<ForgeToolDeps, 'maxDiffChars'>): Promise<string | null> {
-  if (d.forges.size === 0 && !d.trello) return null;
+const BOT = /dependabot|renovate/i;
+
+export interface BriefingExtras {
+  /** Recent worker tasks (the store's latest). */
+  tasks?: () => Task[];
+  /** Subscription windows: five_hour, seven_day… utilization 0–1. */
+  quota?: () => Map<string, { utilization?: number | undefined }>;
+  now?: () => Date;
+}
+
+/** The tech part of the morning briefing: short lines, most useful first. */
+export async function workBriefing(
+  d: Omit<ForgeToolDeps, 'maxDiffChars'>,
+  x: BriefingExtras = {},
+): Promise<string | null> {
+  const tasks = x.tasks?.() ?? [];
+  if (d.forges.size === 0 && !d.trello && tasks.length === 0) return null;
+  const now = x.now?.() ?? new Date();
   const out: string[] = [];
   for (const [id, f] of d.forges) {
-    const box = await f.inbox(8).catch((e: Error) => e);
+    const box = await f.inbox(15).catch((e: Error) => e);
     const name = id === 'github' ? 'GitHub' : 'GitLab';
     if (box instanceof Error) {
       out.push(`## ${name} : indisponible (${box.message})`);
       continue;
     }
-    const failing = box.mine.filter((p) => p.checks === 'failure').length;
+    const failing = box.mine.filter((p) => p.checks === 'failure');
     out.push(
-      `## ${name} : ${box.toReview.length} à relire, ${box.mine.length} PR à moi${failing ? ` (${failing} en échec CI)` : ''}, ${box.issues.length} issue(s)`,
-      ...box.toReview.slice(0, 5).map(changeLine),
-      ...box.mine
-        .filter((p) => p.checks === 'failure' || p.changesRequested)
-        .slice(0, 5)
-        .map(changeLine),
+      `## ${name} : ${box.toReview.length} à relire, ${box.mine.length} PR à moi${failing.length ? ` (${failing.length} en échec CI)` : ''}, ${box.issues.length} issue(s)`,
     );
+    // The review queue's ranking (age, risk zones), on the first few only: details cost calls.
+    const candidates = [
+      ...box.toReview.map((change) => ({ change, worker: false })),
+      ...box.mine
+        .filter((c) => c.source?.startsWith('jarvis/'))
+        .map((change) => ({ change, worker: true })),
+    ].slice(0, 6);
+    const queue = buildQueue(
+      await Promise.all(
+        candidates.map(async (e) => {
+          const facts = await f.reviewFacts(e.change.repo, e.change.number).catch(() => null);
+          return { ...e, ...(facts && { facts }) };
+        }),
+      ),
+      now,
+    );
+    for (const i of queue.slice(0, 5)) {
+      const zones = i.areas.length ? ` · ${i.areas.map((a) => AREA_FR[a]).join(', ')}` : '';
+      out.push(
+        `- à relire${i.worker ? ' (worker)' : ''} : ${i.change.repo}#${i.change.number} « ${i.change.title} », ${Math.round(i.ageDays)} j${zones}`,
+      );
+    }
+    for (const p of failing.slice(0, 5))
+      out.push(
+        `- CI rouge sur ma PR ${p.repo}#${p.number} « ${p.title} » (ci_failure pour savoir pourquoi)`,
+      );
+    for (const p of box.mine.filter((p) => p.changesRequested).slice(0, 5))
+      out.push(`- changements demandés sur ${p.repo}#${p.number} « ${p.title} »`);
+    const deps = [...box.toReview, ...box.mine].filter((p) => BOT.test(p.author));
+    if (deps.length)
+      out.push(`- ${deps.length} PR de mise à jour de dépendances (Dependabot/Renovate)`);
+  }
+  const recent = tasks.filter(
+    (t) => now.getTime() - Date.parse(t.endedAt ?? t.createdAt) < 86_400_000,
+  );
+  if (recent.length) {
+    out.push(`## Workers (24 h) : ${recent.length}`);
+    for (const t of recent.slice(0, 6)) {
+      const what =
+        t.status === 'done'
+          ? `${t.step}${t.prUrl ? ` — ${t.prUrl}` : ''}`
+          : t.status === 'failed'
+            ? `échec : ${t.error ?? t.step}`
+            : t.status === 'running'
+              ? `en cours (${t.step})`
+              : t.status === 'queued'
+                ? 'en file'
+                : 'annulée';
+      out.push(`- ${t.repo} « ${t.title} » : ${what}`);
+    }
+  }
+  const q = x.quota?.();
+  const five = q?.get('five_hour')?.utilization;
+  const week = q?.get('seven_day')?.utilization;
+  if (five !== undefined || week !== undefined) {
+    const pct = (u?: number) => (u === undefined ? '?' : `${Math.round(u * 100)} %`);
+    out.push(`## Quota abonnement : 5 h ${pct(five)}, 7 j ${pct(week)}`);
   }
   if (d.trello) {
     const cards = await d.trello.cards({ mine: true, max: 8 }).catch((e: Error) => e);
