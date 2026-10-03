@@ -771,6 +771,23 @@ pile au moment où elles finissaient de charger. Elle se fait désormais au prem
 - **Écho** : un énoncé dont au moins 60 % des mots viennent de ce que Jarvis vient de dire est
   ignoré. C'est sa propre voix renvoyée par la pièce, pas une demande.
 
+**Complément (03/10/2026)** : Brightky veut pouvoir dire « Bon, Jarvis… » et toutes les entrées en
+matière naturelles.
+- **Avant le nom** :
+  - salutations et mots de remplissage connus (environ 150, FR et EN) ;
+  - expressions figées (« au fait », « du coup », « s'il te plaît », « by the way ») ;
+  - ou au plus deux mots inconnus, si ce n'est pas le début d'une phrase : pas de sujet (« je »,
+    « c'est »), de déterminant ni de possessif (« le projet », « mon projet »).
+- **Après le nom** : sans virgule, un verbe à la troisième personne (« Jarvis est lent », « Jarvis
+  m'a dit ») signale qu'on parle *de* lui. Rien ne se déclenche.
+- **Mesure** : 63 phrases de synthèse passées par la vraie chaîne (VAD, Parakeet, détecteur) :
+  - 47 déclenchements sur 55 attendus ;
+  - 0 sur les 8 phrases qui parlent de Jarvis ;
+  - ratés restants : le nom n'est pas transcrit (« l'armée », « la vie ») par une voix robotique.
+
+  Piste suivante : le *vocabulary boosting* de Parakeet, s'il ne demande pas un gros
+  téléchargement.
+
 ## ADR-030 — Le bureau : fenêtres, écrans, fermer des apps (02/10/2026)
 
 **Demande de Brightky** : « Jarvis doit pouvoir fermer des apps, voir mon écran, faire des

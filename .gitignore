@@ -20,3 +20,7 @@ apps/mac/.swiftpm/
 apps/mac/Package.resolved
 # Brightky's own sealed policy (accounts, hosts): never in git
 config/policy.yaml
+
+# Deep-research notes and reports (local)
+research_notes/
+reports/

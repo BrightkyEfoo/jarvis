@@ -17,6 +17,17 @@
   et peut la déplacer sur un autre écran. Fermer une fenêtre demande une validation.
 - Jarvis.app 0.8.0 : nouvelle capacité `windows`. Les nouvelles actions sont traduites en français
   pour la voix et le tableau de bord.
+- **Encore plus de façons d'appeler Jarvis** :
+  - toute courte entrée en matière suffit avant le nom : « Bon, / Allez / Tiens / Au fait / Du
+    coup / Dis donc / Bref / Vas-y / S'il te plaît / Franchement… Jarvis » ;
+  - en anglais : « So / Well / Alright / Listen / By the way… Jarvis » ;
+  - un vrai mot avant le nom fait partie de la demande : « Ouvre, Jarvis, le terminal ».
+  - Les phrases qui parlent *de* Jarvis ne le déclenchent pas : « Jarvis est lent », « le projet
+    Jarvis », « Jarvis m'a dit ».
+  - Si la reconnaissance coupe le nom en deux (« Jar vis »), il est recollé.
+  - Mesure sur 63 phrases dites par des voix de synthèse : 47 déclenchements sur 55 attendus, contre
+    environ 25 avant, et aucun faux déclenchement. Les ratés restants viennent tous de la voix la
+    plus robotique, où le nom n'est pas transcrit du tout.
 
 ## 0.13.0 — Tout connecter, appel plus naturel (02/10/2026)
 
