@@ -1008,3 +1008,76 @@ workers n'ouvre le réseau qu'aux registres de paquets, et la connexion de Brigh
 d'autres services Mach ou de `--no-sandbox` (sandbox imbriquée), et si ses écritures restent dans
 le profil jetable. Il faut aussi tester Lighthouse via chrome-launcher, et le serveur de dev de
 Next, Vite et Storybook sur `127.0.0.1`. Premier essai à faire avec Brightky, sur un vrai frontend.
+
+## ADR-035 — Kit de scanners DevSecOps locaux (03/10/2026)
+
+**Contexte** (rapport « Jarvis pour les équipes tech », propositions 8, 9 et 10) :
+- les scanners déterministes (gitleaks, OSV-Scanner, zizmor, Checkov, Trivy, Grype, Opengrep)
+  sont gratuits, open source et s'installent par Homebrew ;
+- les couches d'IA open source (k8sgpt, HolmesGPT…) exigent une clé API ou un modèle local lourd,
+  incompatibles avec l'abonnement seul et la connexion mesurée ;
+- selon Datadog, seules 18 % des vulnérabilités « critiques » le restent une fois le contexte
+  appliqué : une liste brute de CVE sert peu, il faut trier par atteignabilité et exposition ;
+- « lecture seule » ne veut pas dire « sans réseau » : les bases de vulnérabilités se
+  téléchargent ;
+- un scanner peut lui-même être compromis (Trivy, mars 2026).
+
+**Décision** :
+- **Les scanners trouvent, Claude trie et explique.**
+  - Deux outils N0 : `security_tools` (inventaire, installation) et `security_scan` (contenu
+    externe).
+  - Le travail déterministe (exécution, parsing, forme commune, tri par gravité ajusté d'environ
+    un cran par les signaux, plafonds) est du code. Le modèle ne reçoit qu'un résumé borné et ne
+    choisit aucun argument de ligne de commande.
+- **Catalogue fixe d'argv**, réunis dans un seul fichier pour être ajustés facilement :
+  - `gitleaks dir --report-format json --report-path - --redact --no-banner <dossier>` ;
+  - `osv-scanner scan source --recursive --format json [--offline] <dossier>` ;
+  - `zizmor --format json --offline <dossier>` ;
+  - `checkov --directory <dossier> --framework … --output json --compact --quiet --skip-download` ;
+  - `trivy image --format json --quiet --scanners vuln [--skip-db-update --skip-java-db-update
+    --offline-scan] -- <image>` et `trivy config --format json --quiet <dossier>` ;
+  - `grype --output json --quiet -- <image>` ;
+  - `opengrep|semgrep scan --config <règles locales> --json --quiet <dossier>`.
+
+  Les drapeaux sont placés avant la cible, parce qu'urfave/cli s'arrête au premier argument
+  positionnel.
+- **Exécution** : l'exécuteur sans shell du paquet policy, plutôt que `execFile`. On garde la même
+  garantie (argv, `shell: false`), et on gagne la mise à mort du groupe de process, car checkov
+  lance des sous-process. Sont aussi bornés :
+  - le délai par scanner : délai du gate moins 15 s, pour que le résumé revienne toujours ;
+  - la sortie (24 Mo) ;
+  - le nombre de constats (5 000 par outil, 40 affichés).
+- **Contrôles par défaut** : secrets, dépendances, CI, IaC, et la SAST si des règles locales
+  existent. L'image est sur demande. Ce qui ne peut pas tourner est dit, avec la commande
+  d'installation : Jarvis n'installe jamais rien.
+- **PR des workers** : contrôle des nouvelles dépendances par lecture des manifestes, et gitleaks
+  sur les lignes ajoutées s'il est installé. Rien n'est bloqué faute d'outil. Une dépendance
+  suspecte garde la PR en brouillon, avec l'avertissement en tête.
+
+**Écarté** :
+- **`trufflehog --verify`** : la vérification active envoie le secret au fournisseur. Elle n'est pas
+  proposée (au mieux N3 plus tard).
+- **`semgrep --config auto`** et les règles du registre : réseau, et licence des règles Semgrep.
+  Seules les règles locales sont acceptées.
+- **Laisser le modèle composer les commandes via `shell_run`** : les scanners ne sont pas dans la
+  liste blanche, donc N3 et refusés après lecture d'un contenu externe ; surtout, aucune garantie
+  sur `--redact` ni sur le réseau. Un catalogue fixe se teste.
+- **Installer les scanners automatiquement** : téléchargements de 100 Mo et plus sur une connexion
+  mesurée, et une installation est une action sur la chaîne d'approvisionnement : c'est à
+  Brightky de la faire.
+- **Repli de la vérification des dépendances sur grype ou trivy** quand osv-scanner manque : ce
+  serait un téléchargement de base de vulnérabilités surprise. Ces outils restent pour les images.
+- **Pare-feu de dépendances complet** (existence dans le registre, âge, téléchargements, `sfw`) :
+  il faut le réseau. C'est la prochaine étape : il faudra ouvrir la sandbox des workers vers
+  Socket et décider du niveau (N4 pour un paquet inexistant ou trop récent).
+- **Correctifs automatiques des workflows** (épinglage par SHA, proposition 10) : à faire en code
+  déterministe, avec une PR **N3** qui touche `.github/workflows` ; c'est hors de ce lot.
+
+**Non vérifié sur un vrai binaire** (aucun scanner n'est installé sur le Mac de développement) :
+- les drapeaux ci-dessus, le format JSON exact de chaque version et les codes de sortie (zizmor
+  10 à 14, osv-scanner 128 « aucun paquet ») ;
+- `trivy --skip-check-update`, le comportement d'opengrep sans `--metrics`, `gitleaks dir` sur un
+  fichier unique (contrôle du diff des workers) ;
+- les tailles de téléchargement, qui sont des ordres de grandeur.
+
+À refaire avec Brightky : `security_tools`, puis un `security_scan` sur un vrai dépôt, sur Wi-Fi.

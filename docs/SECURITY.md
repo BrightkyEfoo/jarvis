@@ -264,6 +264,56 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   demandent deux clics, pour éviter un arrêt par erreur (la reprise exige le PIN). ⌃⎋ reste
   immédiat. La raison enregistrée dit d'où vient l'arrêt.
 
+## Scanners de sécurité (ADR-035)
+- **Catalogue fixe** (`apps/jarvisd/src/security/catalogue.ts`) :
+  - les seuls argv possibles sont écrits dans le code ; le modèle choisit le dossier, les contrôles,
+    `offline` et une référence d'image validée, rien d'autre ;
+  - l'exécution passe par l'exécuteur de `shell/exec.ts` : pas de shell, groupe de process tué au
+    STOP ou au délai, sortie plafonnée (24 Mo par scanner), environnement reconstruit sans aucun
+    secret, PATH fixe.
+- **Le dossier scanné** passe par la même politique que `fs_read` (`FsPolicy.check` en lecture) :
+  - realpath, donc un lien symbolique vers `~/.ssh` est refusé ;
+  - dossiers protégés, fichiers `.env*` et clés, hors des racines autorisées : N4 avec la règle
+    d'origine (`fs.deny.protected`, `fs.deny.secret_file`, `fs.outside_roots`) ;
+  - de plus, une racine qui **contient** un magasin d'identifiants (`~/.ssh`, `~/.aws`, Trousseaux,
+    données de Jarvis…) est refusée (`security.scan.contains_protected`) ;
+  - le contrôle est refait à l'exécution.
+- **Binaire** : un scanner situé dans le projet scanné (par exemple `node_modules/.bin`) n'est
+  jamais lancé. Une version compromise connue (trivy 0.69.4 à 0.69.6) n'est jamais lancée, et sa
+  version est lue dans le Cellar de Homebrew sans l'exécuter.
+- **Références d'image** : nom[:tag][@sha256:…] uniquement. Les schémas qui font lire un chemin
+  local (`dir:`, `file:`, `sbom:`, `oci-dir:`…) sont refusés (`security.image_scheme`). `--` est
+  passé avant la référence.
+- **Jamais de valeur de secret** :
+  1. drapeaux des scanners (`gitleaks --redact`, trivy `--scanners vuln`, checkov sans le
+     framework `secrets`) ;
+  2. les parseurs ne lisent jamais `Secret`, `Match`, `Line`, `code_block` ni `extra.lines` ;
+  3. une valeur brute qu'un scanner aurait laissée passer est retirée de tout le texte, avant toute
+     troncature, puis le rédacteur du daemon s'applique. La sortie du gate repasse ensuite par le
+     rédacteur.
+- **Réseau**, toujours annoncé dans le résumé :
+  - osv-scanner envoie les noms et versions des paquets à api.osv.dev, jamais le code ;
+  - trivy et grype téléchargent leur base au premier scan (~60 à 80 Mo, plus ~700 Mo de base Java
+    pour trivy si l'image contient des `.jar`), et l'image si elle n'est pas en local ;
+  - zizmor tourne en `--offline` (aucun token GitHub n'est fourni), checkov en `--skip-download` ;
+  - la SAST n'utilise que des règles locales.
+
+  `offline: true` coupe tout appel, sauf la récupération d'une image absente du Docker local.
+- **Taint** : la sortie est une donnée externe (messages de bases de vulnérabilités, de règles du
+  dépôt). Elle est encadrée et teinte la session.
+- **Non proposé** : la vérification en ligne des secrets (`trufflehog --verify`). Elle enverrait
+  chaque secret trouvé à son fournisseur. Si elle arrive un jour, ce sera en N3.
+- **PR des workers** : gitleaks sur les lignes ajoutées s'ajoute au rédacteur (il ne le remplace
+  pas). Les nouvelles dépendances suspectes laissent la PR en brouillon. Aucun des deux contrôles
+  n'utilise le réseau ; un outil absent ne bloque rien.
+- **Risques résiduels** :
+  - un lien symbolique *à l'intérieur* du projet n'est pas suivi par défaut par les scanners
+    (gitleaks sans `--follow-symlinks`, parcours sans suivi des liens), mais ce n'est pas vérifié
+    sur de vrais binaires. Le pire cas est un constat qui nomme un fichier, jamais son contenu ;
+  - un message de règle semgrep peut interpoler du code (métavariables) ; seul le rédacteur le
+    filtre ;
+  - les drapeaux des CLI sont tirés de leur documentation, pas d'un binaire réel (voir ADR-035).
+
 ## Serveurs et déploiements (ADR-033)
 
 - **Périmètre** : seulement les serveurs et apps de la politique **scellée**. Un serveur inconnu

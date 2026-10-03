@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.19.0 — Kit DevSecOps (03/10/2026)
+
+### Ajouté
+- **`security_tools` (N0)** : quels scanners sont installés (chemin, version) et comment installer
+  les autres, avec la commande Homebrew et la taille approximative du téléchargement. Les gros
+  (checkov, semgrep, bases de trivy et grype) sont signalés « sur Wi-Fi ». Catalogue : gitleaks,
+  osv-scanner, zizmor, checkov, trivy, grype, syft, opengrep, semgrep. Les binaires sont cherchés
+  dans `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, puis le PATH (entrées absolues
+  seulement).
+  - Une version compromise connue (trivy 0.69.4 à 0.69.6, attaque TeamPCP de mars 2026) est
+    signalée. Pour une installation Homebrew, la version est lue dans le chemin du Cellar, sans
+    lancer le binaire.
+- **`security_scan` (N0, contenu externe)** sur un dossier de projet :
+  - `secrets` : gitleaks (`--redact`) ;
+  - `dependencies` : osv-scanner, avec la version corrigée qui s'applique à la version installée ;
+  - `ci` : zizmor pour GitHub Actions, checkov (`gitlab_ci`) pour GitLab CI ;
+  - `iac` : checkov (Terraform, CloudFormation, Kubernetes, Dockerfile, Serverless, ARM, Bicep,
+    Ansible), trivy en secours ;
+  - `image` (sur demande, paramètre `image`) : trivy, sinon grype ;
+  - `sast` : opengrep, sinon semgrep, **seulement avec un jeu de règles local** (`.semgrep.yml`,
+    `.semgrep/`, `.opengrep.yml`). Jamais de règles téléchargées.
+
+  Les rapports JSON sont ramenés à une forme commune : outil, gravité, règle, fichier:ligne,
+  message court, correctif. Le résumé en français est trié par gravité, puis par les signaux
+  d'atteignabilité et d'exposition quand le scanner les donne :
+  - vulnérabilité appelée ou non par le code (analyse d'appels d'osv-scanner) ;
+  - dépendance de dev seulement ;
+  - exploitation active (CISA KEV, via grype) ;
+  - audit atteignable par un attaquant extérieur (injection de template, déclencheurs dangereux) ;
+  - accès public dans l'IaC.
+
+  Il est plafonné (40 lignes, 8 000 caractères ; le reste est compté) et dit ce qui a tourné, ce
+  qui manque, et ce qui est parti sur le réseau.
+- `offline: true` : osv-scanner `--offline`, trivy `--skip-db-update --skip-java-db-update
+  --offline-scan`, grype `GRYPE_DB_AUTO_UPDATE=false`. Les bases doivent avoir été téléchargées
+  avant (sur Wi-Fi).
+- **PR des workers** (sans réseau, sans installation) :
+  - **Nouvelles dépendances** : lues dans les manifestes avant et après (`package.json`,
+    `requirements*.txt`, `go.mod`). Sont signalés en tête de PR :
+    - une source hors registre (git, URL, fichier, raccourci GitHub) ;
+    - un alias npm ;
+    - une version non bornée (`*`, `latest`, `>=x`) ;
+    - un nom très proche d'un paquet populaire (typosquatting) ;
+    - une dépendance npm absente du lockfile, donc jamais installée (nom inventé ?) ;
+    - un index PyPI ajouté, une installation éditable, une directive `replace` Go.
+
+    La PR reste alors en brouillon, et l'étape le dit (« 2 dépendance(s) à vérifier »).
+  - **gitleaks sur les lignes ajoutées**, si gitleaks est installé : un secret que les motifs du
+    rédacteur ne connaissent pas bloque la publication. S'il manque ou s'il échoue, le pipeline
+    continue avec le contrôle existant, sans attendre.
+- Consigne du prompt (4 lignes) : quand utiliser `security_scan` et `security_tools`, trier et
+  expliquer sans jamais recopier une valeur de secret.
+
+### Tests
+- 24 tests unitaires (`apps/jarvisd/test/security.test.ts`) contre de **faux exécutables** (scripts
+  Node écrits dans un dossier temporaire, injectés par le localisateur de binaires). Ils couvrent :
+  - un parseur par scanner, sur des rapports de la forme réelle ;
+  - la rédaction : un faux gitleaks qui **ignore `--redact`** et renvoie le secret brut, jusque
+    dans la description et le nom de fichier ; rien ne sort ;
+  - le refus des chemins : lien symbolique vers `~/.ssh`, `.env.d`, hors racines, `/etc`, racine
+    qui contient des identifiants, schéma d'image local ;
+  - le message quand un outil manque, le délai dépassé (processus tué), les codes de sortie, une
+    version compromise jamais lancée, un binaire du projet jamais lancé ;
+  - les contrôles de dépendances.
+- 6 tests e2e (`tests/e2e/security.test.ts`) passent par le harnais, le gate et le cerveau scripté
+  (`call security_scan {…}`). Ils couvrent :
+  - N0 sans validation, sortie encadrée, session teintée, aucun secret dans la sortie ni dans
+    l'audit ;
+  - la PR d'un worker avec dépendances suspectes (brouillon, avertissement en tête) ;
+  - un secret inconnu des motifs, arrêté par gitleaks : rien n'est poussé.
+
 ## 0.18.0 — Les workers vérifient l'interface (03/10/2026)
 
 ### Ajouté

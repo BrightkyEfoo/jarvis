@@ -243,7 +243,7 @@ describe('workers: browser checks of a web frontend (ADR-036)', () => {
       const body = s.forge.opened[0]?.body ?? '';
       expect(body).not.toContain('Interface vérifiée');
       expect(body).toBe(
-        'Ajoute a.\n\n### Vérifié par Jarvis\nCommandes réellement exécutées, dernier résultat de chacune :\n- ✅ `pnpm test`\n\n\n---\nTâche : Ajoute une constante a',
+        'Ajoute a.\n\n### Vérifié par Jarvis\nCommandes réellement exécutées, dernier résultat de chacune :\n- ✅ `pnpm test`\n\n---\nTâche : Ajoute une constante a',
       );
       expect(existsSync(join(s.dir, 'ui'))).toBe(false);
       await stopped?.();

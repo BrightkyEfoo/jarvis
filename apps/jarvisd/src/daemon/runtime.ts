@@ -47,6 +47,8 @@ import {
 import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import { ClaudeResearcher, type Researcher } from '../orchestrator/research.ts';
 import type { AppPaths } from '../paths.ts';
+import { diffSecretScanner } from '../security/pr-checks.ts';
+import { binaryLocator, type Locate } from '../security/run.ts';
 import { createComputerTools } from '../tools/computer.ts';
 import { createForgeTools, workBriefing } from '../tools/forge.ts';
 import { createTools } from '../tools/index.ts';
@@ -56,6 +58,7 @@ import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
 import { createOpsTools, type OpsToolDeps } from '../tools/ops.ts';
 import { createResearchTools, type YouTube, YtDlp } from '../tools/research.ts';
+import { createSecurityTools } from '../tools/security.ts';
 import { createTrelloWorkerTools, trelloFollowUp } from '../tools/trello-workers.ts';
 import { createWorkerTools } from '../tools/workers.ts';
 import { Git } from '../workers/git.ts';
@@ -102,6 +105,8 @@ export interface RuntimeOptions {
   linkedin?: { client: () => LinkedInClient | null; token: () => LinkedInToken | null };
   /** Tests inject fake SSH, CI secrets and key generation; production uses ssh, gh and the GitLab API. */
   ops?: Partial<Pick<OpsToolDeps, 'ssh' | 'secrets' | 'keyPair' | 'knownHosts' | 'fetch'>>;
+  /** Tests inject fake scanner binaries; production looks in Homebrew, ~/.local/bin and PATH. */
+  security?: { locate: Locate };
 }
 
 export type Activity =
@@ -452,6 +457,18 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     ...(o.ops?.fetch && { fetch: o.ops.fetch }),
   }))
     gate.register(t);
+
+  // DevSecOps scanners (ADR-035): fixed catalogue, N0, never installed by Jarvis.
+  const locate = o.security?.locate ?? binaryLocator({ home: o.home, pathEnv: process.env.PATH });
+  for (const t of createSecurityTools({
+    fs,
+    home: o.home,
+    locate,
+    redact: (s) => redactor.redact(s),
+    // Leaves the gate time to return the summary before its own timeout.
+    timeoutMs: Math.max(10_000, policy.shell.timeout_sec * 1000 - 15_000),
+  }))
+    gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
 
   // Coding workers (S6): Claude Code on the subscription, sandboxed, one worktree per task.
@@ -496,6 +513,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     audit,
     killswitch,
     containsSecret: (text) => redactor.redact(text) !== text,
+    scanDiff: diffSecretScanner({ locate, home: o.home, tmpDir: join(policy.workers.dir, 'tmp') }),
     emit: (e) => events.emit('activity', { kind: 'worker', ...e }),
     home: o.home,
     dir: policy.workers.dir,
