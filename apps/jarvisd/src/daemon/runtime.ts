@@ -31,6 +31,7 @@ import {
 } from '@jarvis/policy';
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import { type Actuator, ActuatorBridge } from '../computer/bridge.ts';
+import { FigmaBridge } from '../figma/bridge.ts';
 import type { Brain } from '../orchestrator/brain.ts';
 import { ClaudeBrain } from '../orchestrator/claude.ts';
 import {
@@ -42,6 +43,7 @@ import { quotaAction, type RateLimitInfo } from '../orchestrator/quota.ts';
 import { ClaudeResearcher, type Researcher } from '../orchestrator/research.ts';
 import type { AppPaths } from '../paths.ts';
 import { createComputerTools } from '../tools/computer.ts';
+import { createFigmaTools } from '../tools/figma.ts';
 import { createForgeTools, workBriefing } from '../tools/forge.ts';
 import { createTools } from '../tools/index.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
@@ -258,6 +260,8 @@ export interface Runtime {
   actuatorInfo(): { connected: boolean; version?: string; capabilities?: string[] };
   forgeStatus(): { id: string; connected: boolean; connect: string }[];
   workers: { manager: WorkerManager; store: TaskStore };
+  /** Free Figma bridge (ADR-034): main.ts opens its loopback listener. */
+  figma: FigmaBridge;
   devMode: boolean;
   /** Last quota warning, shown by `jarvis status`. */
   quotaWarning: string | null;
@@ -392,6 +396,11 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   const actuator = o.actuator ?? bridge;
   for (const t of createComputerTools({ policy, actuator })) gate.register(t);
 
+  const figma = new FigmaBridge({
+    audit: (outcome, data) => audit.append({ event: 'system', outcome, data }),
+  });
+  for (const t of createFigmaTools({ bridge: figma })) gate.register(t);
+
   for (const t of createForgeTools({ ...forges, maxDiffChars: policy.forges.max_diff_chars }))
     gate.register(t);
   const quota = new Map<string, RateLimitInfo>();
@@ -503,6 +512,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     brain: null,
     bridge,
     workers: { manager: workerManager, store: taskStore },
+    figma,
     forgeStatus: () =>
       (['github', 'gitlab', 'trello'] as const).map((id) => ({
         id,
@@ -518,6 +528,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
     stop: (reason) => killswitch.engage(reason),
     close: async () => {
       await rt.brain?.close();
+      await figma.close();
       audit.append({ event: 'system', outcome: 'shutdown' });
       await workerManager.shutdown();
       audit.close();
