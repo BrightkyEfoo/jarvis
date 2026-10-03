@@ -1051,6 +1051,18 @@ figma.ui.onmessage = (msg) => {
     if (typeof msg.token === 'string' && msg.token.length <= 200)
       figma.clientStorage.setAsync('jarvis-token', msg.token);
   } else if (msg.type === 'op') {
-    run(msg.op).then((r) => figma.ui.postMessage(r));
+    // Always answer: a lost answer would leave the UI waiting and Jarvis thinking the plugin left.
+    const id = isObj(msg.op) && typeof msg.op.id === 'string' ? msg.op.id : '';
+    run(msg.op)
+      .then((r) => figma.ui.postMessage(r))
+      .catch(() =>
+        figma.ui.postMessage({
+          type: 'result',
+          id: id,
+          ok: false,
+          code: 'error',
+          error: 'internal error',
+        }),
+      );
   }
 };

@@ -1,6 +1,14 @@
 import { basename, relative, sep } from 'node:path';
 import { FsPolicy, type PathError, parseShell, ShellParseError } from '@jarvis/policy';
-import { auditIndex, flagValue, isBrowser, loopbackUrl, shellWords, type UiTools } from './ui.ts';
+import {
+  AUDIT_TOOLS,
+  auditIndex,
+  flagValue,
+  isBrowser,
+  loopbackUrl,
+  shellWords,
+  type UiTools,
+} from './ui.ts';
 
 export interface GuardVerdict {
   allow: boolean;
@@ -204,7 +212,8 @@ export function workerGuard(
   const ui = o.ui;
   const uiRoot = ui ? fs.resolve(ui.dir, root) : '';
   const inUi = (path: string): boolean => {
-    if (!ui) return false;
+    // Absolute only: the proof code reads these files later, from another working directory.
+    if (!ui || !path.startsWith('/')) return false;
     let abs: string;
     try {
       abs = fs.resolve(path, root);
@@ -215,10 +224,37 @@ export function workerGuard(
     return !rel.startsWith('..') && !rel.startsWith(sep) && !/^[a-z]:/i.test(rel);
   };
 
+  /** Programs that run another program given as an argument. */
+  const WRAPPERS = new Set([
+    'env',
+    'nohup',
+    'time',
+    'xargs',
+    'command',
+    'exec',
+    'arch',
+    'caffeinate',
+    'nice',
+    'timeout',
+    'stdbuf',
+    'open',
+  ]);
+
   /** Extra rules of a frontend task; null when none applies to this command. */
   const uiCommand = (argv: readonly string[], u: WorkerUiGuard): GuardVerdict | null => {
     const [bin = '', ...args] = argv;
     const base = basename(bin).toLowerCase();
+
+    // The browser or an audit started through another program (env, nohup, xargs, a runner's
+    // filters…) would escape the checks below: they must be the command itself.
+    const wrapper = WRAPPERS.has(base);
+    if (
+      args.some(
+        (a) =>
+          !a.startsWith('-') && !a.includes('://') && (wrapper || a.includes('/')) && isBrowser(a),
+      )
+    )
+      return deny('worker.ui.wrapper', 'run the browser directly, not through another command');
 
     // A dev server stays on loopback: on 0.0.0.0 the local network could reach it.
     for (let i = 0; i < args.length; i++) {
@@ -252,6 +288,14 @@ export function workerGuard(
           `${name} is not a dependency of this project: it is never downloaded for a check`,
         );
     }
+
+    // An audit started through a runner's filters (pnpm --filter x exec …) escapes the checks below.
+    const audit = argv.findIndex((a) => AUDIT_TOOLS.has(basename(a)));
+    if (audit > 0 && auditIndex(argv) < 0 && argv.some((a) => /^https?:\/\//.test(a)))
+      return deny(
+        'worker.ui.wrapper',
+        `${basename(argv[audit] ?? '')}: run it as \`pnpm exec ${basename(argv[audit] ?? '')} …\` so its pages and reports are checked`,
+      );
 
     // The Mac's browser: headless, throwaway profile, files in the task's folder, loopback only.
     if (isBrowser(bin)) {

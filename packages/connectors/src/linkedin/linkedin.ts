@@ -35,7 +35,16 @@ export interface LinkedInToken {
  * (code in posts is full of them).
  */
 export function escapeLittleText(text: string): string {
-  return text.replace(/[\\|{}@[\]()<>#*_~]/g, (c) => `\\${c}`);
+  const esc = (s: string) => s.replace(/[\\|{}@[\]()<>#*_~]/g, (c) => `\\${c}`);
+  // Real hashtags use LinkedIn's template; every other reserved character is escaped.
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(/(^|\s)#([\p{L}\p{N}_]+)/gu)) {
+    const start = (m.index ?? 0) + (m[1]?.length ?? 0);
+    out += `${esc(text.slice(last, start))}{hashtag|\\#|${m[2]}}`;
+    last = start + 1 + (m[2]?.length ?? 0);
+  }
+  return out + esc(text.slice(last));
 }
 
 /** Authorization code flow on a fixed loopback port (LinkedIn wants the exact redirect URL). */
@@ -72,7 +81,10 @@ export async function connectLinkedIn(opts: {
       server.close();
       reject(new Error('pas de réponse du navigateur en 5 minutes'));
     }, opts.timeoutMs ?? 300_000);
-    server.once('error', reject);
+    server.once('error', (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
     server.listen(LINKEDIN_REDIRECT_PORT, '127.0.0.1', () => {
       const url = new URL(AUTH_URL);
       url.search = new URLSearchParams({
@@ -188,7 +200,23 @@ export class LinkedInClient {
       signal: AbortSignal.timeout(120_000),
     });
     if (!put.ok) throw new Error(`LinkedIn : dépôt du fichier refusé (${put.status})`);
+    await this.#ready(kind, urn);
     return urn;
+  }
+
+  /** LinkedIn processes uploads asynchronously: a post made too early can fail. */
+  async #ready(kind: 'images' | 'documents', urn: string): Promise<void> {
+    for (let i = 0; i < 20; i++) {
+      const res = await this.#fetch(`${API}/rest/${kind}/${encodeURIComponent(urn)}`, {
+        headers: this.#headers(false),
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null);
+      if (!res?.ok) return;
+      const status = ((await res.json().catch(() => ({}))) as { status?: string }).status;
+      if (status === 'AVAILABLE' || status === undefined) return;
+      if (status === 'PROCESSING_FAILED') throw new Error('LinkedIn n’a pas pu traiter le fichier');
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 
   /** Publishes now, as Brightky. Returns the post URN and its public URL. */

@@ -316,6 +316,13 @@ export function newDependencies(
           warn(d, 'absente du lockfile : jamais installée (nom inventé ?)');
       }
     } else if (name === 'go.mod') {
+      // A version bump is not a new dependency: compare module names, not lines.
+      const before = new Set(
+        (c.before ?? '')
+          .split('\n')
+          .map((l) => GO_MODULE.exec(l.trim())?.[1])
+          .filter(Boolean),
+      );
       for (const line of addedLines(c.before, c.after)) {
         if (/^replace\s*\($/.test(line)) continue; // block opener: its entries are flagged
         if (/^replace\b/.test(line) || /=>/.test(line)) {
@@ -323,14 +330,31 @@ export function newDependencies(
           warn(d, 'directive replace : module remplacé par un fork ou un chemin local');
           continue;
         }
-        const m = /^(?:require\s+)?([\w.~-]+\.[\w.~-]+\/[\w./~-]+)\s+(v[\w.+-]+)/.exec(line);
-        if (!m || /\/\/\s*indirect/.test(line)) continue;
+        const m = GO_MODULE.exec(line);
+        if (!m || /\/\/\s*indirect/.test(line) || before.has(m[1])) continue;
         deps.push({ ecosystem: 'go', name: m[1] ?? '', spec: m[2] ?? '', file: c.path });
       }
     } else if (isManifest(c.path)) {
+      const before = new Set(
+        (c.before ?? '')
+          .split('\n')
+          .map((l) =>
+            PY_NAME.exec(l.trim())?.[1]
+              ?.toLowerCase()
+              .replace(/[-_.]+/g, '-'),
+          )
+          .filter(Boolean),
+      );
       for (const line of addedLines(c.before, c.after)) {
         const l = line.replace(/\s+#.*$/, '');
         if (!l || l.startsWith('#')) continue;
+        // A bare URL or path is a package from outside the registry, not a package named "https".
+        if (/^(https?|file|git\+\w+|hg\+\w+|svn\+\w+):/i.test(l)) {
+          const d: NewDep = { ecosystem: 'pypi', name: oneLine(l, 80), spec: '', file: c.path };
+          deps.push(d);
+          warn(d, `source hors registre (${oneLine(l, 80)})`);
+          continue;
+        }
         if (/^(-i|--index-url|--extra-index-url)\b/.test(l)) {
           const d: NewDep = { ecosystem: 'pypi', name: oneLine(l, 80), spec: '', file: c.path };
           warn(d, 'index de paquets ajouté : risque de confusion de dépendances');
@@ -343,8 +367,10 @@ export function newDependencies(
           }
           continue;
         }
-        const m = /^([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$/.exec(l);
+        const m = PY_NAME.exec(l);
         if (!m) continue;
+        // A version bump of a dependency already there is not a new one.
+        if (before.has((m[1] ?? '').toLowerCase().replace(/[-_.]+/g, '-'))) continue;
         const d: NewDep = {
           ecosystem: 'pypi',
           name: m[1] ?? '',
@@ -361,6 +387,9 @@ export function newDependencies(
   }
   return { deps, warnings };
 }
+
+const GO_MODULE = /^(?:require\s+)?([\w.~-]+\.[\w.~-]+\/[\w./~-]+)\s+(v[\w.+-]+)/;
+const PY_NAME = /^([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$/;
 
 const code = (s: string) => `\`${s.replaceAll('`', "'")}\``;
 

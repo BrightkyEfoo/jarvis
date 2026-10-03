@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.20.2 — Correctifs de la relecture de justesse (03/10/2026)
+
+### Corrigé
+- **Preuve avant PR** : une capture d'écran ou un audit (Lighthouse, axe) ne couvre plus des tests
+  lancés avant une modification. Sans test, lint ni typecheck, la PR reste un brouillon.
+- **Vérification de l'interface** :
+  - le navigateur ou un audit lancé à travers une autre commande (`env`, `nohup`, `xargs`,
+    `pnpm --filter … exec`) est refusé ;
+  - les chemins de captures et de rapports doivent être absolus.
+- **Scanners** :
+  - checkov n'est pas lancé sur un projet qui contient un `.checkov.yml`, car ce fichier pourrait
+    lui faire charger du code Python du dépôt ;
+  - dans les `requirements.txt`, une URL brute est une source hors registre, et une montée de
+    version n'est pas une nouvelle dépendance ;
+  - une sévérité osv de 0 vaut « inconnue ».
+- **LinkedIn** :
+  - dates jour/mois ou mois/jour détectées sur tout le fichier, et lecture XLSX tolérante
+    (ordre des attributs, chaînes vides) ;
+  - hashtags cliquables ;
+  - attente de la fin du traitement des médias avant de publier ;
+  - fichier importé = fichier autorisé ;
+  - correspondance post ↔ statistiques sur le jour local ;
+  - `jarvis linkedin connect` ne reste plus bloqué si le port est pris.
+- **Figma** :
+  - un plugin occupé n'est plus vu comme déconnecté ;
+  - après un délai dépassé sur une écriture, Jarvis prévient qu'elle a pu passer, et qu'il faut
+    relire avant de réessayer ;
+  - le plugin répond toujours, même après une erreur interne.
+- **Île** : plus de plantage possible sans écran branché, mises à jour même pendant qu'un menu est
+  ouvert, redimensionnement hors du cycle SwiftUI. **Fenêtres** : « restaurer » agit sur la fenêtre
+  réduite.
+
 ## 0.20.1 — Correctifs de la relecture de sécurité (03/10/2026)
 
 ### Corrigé

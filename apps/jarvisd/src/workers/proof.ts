@@ -19,10 +19,14 @@ export type UiCheck =
   | { kind: 'lighthouse'; url: string; report: string | null }
   | { kind: 'axe'; url: string };
 
-const CHECKS: RegExp[] = [
+/** Browser audits: they prove the page renders, not that the code is right. */
+const AUDIT =
+  /^((npx|bunx|pnpm(\s+exec)?|yarn|npm\s+exec)\s+)?(\S*\/)?(lighthouse|axe|pa11y|pa11y-ci)\s/;
+
+/** Tests, lint, typecheck, build: what makes a PR "verified". */
+const CORE: RegExp[] = [
   /^(pnpm|npm|yarn|bun)\s+(run\s+)?(test|tests|lint|typecheck|type-check|check|build|verify|e2e|test:\S+|lint:\S+)\b/,
   /^((npx|bunx|pnpm\s+(exec|dlx))\s+)?(vitest|jest|mocha|ava|tsc|tsgo|eslint|biome|stylelint|playwright\s+test|cypress\s+run)\b/,
-  /^((npx|bunx|pnpm(\s+exec)?|yarn|npm\s+exec)\s+)?(\S*\/)?(lighthouse|axe|pa11y|pa11y-ci)\s/,
   /^(python3?\s+-m\s+)?(pytest|unittest|ruff|mypy|pyright|flake8|black\s+--check)\b/,
   /^go\s+(test|vet|build)\b/,
   /^cargo\s+(test|clippy|check|build)\b/,
@@ -37,6 +41,13 @@ const CHECKS: RegExp[] = [
   /^dotnet\s+(test|build)\b/,
   /^flutter\s+(test|analyze)\b/,
 ];
+const CHECKS: RegExp[] = [...CORE, AUDIT];
+
+/** A test, lint, typecheck or build (not a capture or a browser audit). */
+export function isCoreCheck(command: string): boolean {
+  const c = normalizeCommand(command);
+  return CORE.some((re) => re.test(c));
+}
 
 /** "CI=1  pnpm   test" → "pnpm test" (environment prefixes and spacing do not matter). */
 export function normalizeCommand(command: string): string {
@@ -129,12 +140,13 @@ export class ProofRecorder {
       if (e.kind === 'check') {
         // Map.set keeps the first-run position of a key: re-running a check updates it in place.
         last.set(e.command, { command: e.command, ok: e.ok, ...(e.ui && { ui: e.ui }) });
-        lastCheck = i;
+        // Only tests, lint, typecheck or build vouch for the code: a later screenshot does not.
+        if (!e.ui && isCoreCheck(e.command)) lastCheck = i;
       } else lastEdit = i;
     });
     return {
       checks: [...last.values()],
-      editedAfterChecks: lastCheck >= 0 && lastEdit > lastCheck,
+      editedAfterChecks: lastEdit > lastCheck && last.size > 0,
     };
   }
 }
@@ -162,6 +174,14 @@ export function proofOf(checks: readonly CheckRun[] = [], editedAfterChecks = fa
     );
   }
   const failing = checks.filter((c) => !c.ok).length;
+  const core = checks.filter((c) => !c.ui && isCoreCheck(c.command));
+  if (core.length === 0 && failing === 0 && checks.length > 0) {
+    return {
+      status: 'none',
+      markdown: `${lines.join('\n')}\n\n⚠️ **Non vérifié** : des captures ou des audits, mais aucun test, lint ni typecheck. PR ouverte en brouillon.`,
+      short: 'non vérifiée (captures seulement, aucun test)',
+    };
+  }
   if (checks.length === 0) {
     return {
       status: 'none',

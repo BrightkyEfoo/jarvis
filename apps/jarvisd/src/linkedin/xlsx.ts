@@ -51,10 +51,14 @@ export function parseSheet(xml: string, shared: string[]): string[][] {
 }
 
 export function parseShared(xml: string): string[] {
-  return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((si) =>
+  // `<si/>` (an empty string) still takes an index.
+  return [...xml.matchAll(/<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g)].map((si) =>
     [...(si[1] ?? '').matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => decode(t[1] ?? '')).join(''),
   );
 }
+
+/** One attribute of an XML tag, whatever the attribute order. */
+const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
 
 export async function readXlsx(file: string): Promise<{ name: string; rows: string[][] }[]> {
   const [workbook, rels, sharedXml] = await Promise.all([
@@ -65,12 +69,16 @@ export async function readXlsx(file: string): Promise<{ name: string; rows: stri
   if (!workbook) throw new Error("ce fichier n'est pas un classeur XLSX lisible");
   const shared = parseShared(sharedXml);
   const targets = new Map(
-    [...rels.matchAll(/<Relationship [^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [
-      m[1],
-      m[2],
+    [...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [
+      attr(m[0], 'Id'),
+      attr(m[0], 'Target'),
     ]),
   );
-  const sheets = [...workbook.matchAll(/<sheet [^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g)];
+  const sheets = [...workbook.matchAll(/<sheet\b[^>]*>/g)].map((m) => [
+    m[0],
+    attr(m[0], 'name'),
+    attr(m[0], 'r:id'),
+  ]);
   const out: { name: string; rows: string[][] }[] = [];
   for (const [, name, rid] of sheets) {
     const target = targets.get(rid ?? '') ?? '';
@@ -93,15 +101,23 @@ const num = (s: string | undefined) => {
   return Number.isFinite(n) && (s ?? '').trim() !== '' ? n : null;
 };
 
-/** Excel serial day, "10/1/2026", "2026-10-01" → YYYY-MM-DD. */
-export function isoDay(s: string | undefined): string | null {
+const SLASH_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/**
+ * Excel serial day, "10/1/2026", "25/10/2026", "2026-10-01" → YYYY-MM-DD. Slash dates are
+ * month/day (LinkedIn's English export) unless `dayFirst` (the file has a first number above 12).
+ */
+export function isoDay(s: string | undefined, dayFirst = false): string | null {
   const v = (s ?? '').trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
   if (/^\d{5}(\.\d+)?$/.test(v))
     return new Date(Date.UTC(1899, 11, 30) + Number(v) * 86_400_000).toISOString().slice(0, 10);
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(v);
-  if (m) return `${m[3]}-${m[1]?.padStart(2, '0')}-${m[2]?.padStart(2, '0')}`;
-  return null;
+  const m = SLASH_DATE.exec(v);
+  if (!m) return null;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  const [month, day] = dayFirst || a > 12 ? [b, a] : [a, b];
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${m[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /**
@@ -109,6 +125,10 @@ export function isoDay(s: string | undefined): string | null {
  * merges their metrics per post.
  */
 export function postStats(sheets: { name: string; rows: string[][] }[]): PostStats[] {
+  // One file uses one date format: day first as soon as any first number exceeds 12.
+  const dayFirst = sheets.some((sh) =>
+    sh.rows.some((r) => r.some((c) => Number(SLASH_DATE.exec(c.trim())?.[1] ?? 0) > 12)),
+  );
   const byUrl = new Map<string, PostStats>();
   for (const sheet of sheets) {
     sheet.rows.forEach((row, r) => {
@@ -122,7 +142,7 @@ export function postStats(sheets: { name: string; rows: string[][] }[]): PostSta
           const url = data[c] ?? '';
           if (!/^https:\/\/(www\.)?linkedin\.com\//.test(url)) continue;
           const s = byUrl.get(url) ?? { url, date: null, impressions: null, engagements: null };
-          if (dateCol >= 0) s.date ??= isoDay(data[c + dateCol]);
+          if (dateCol >= 0) s.date ??= isoDay(data[c + dateCol], dayFirst);
           if (imprCol >= 0) s.impressions ??= num(data[c + imprCol]);
           if (engCol >= 0) s.engagements ??= num(data[c + engCol]);
           byUrl.set(url, s);

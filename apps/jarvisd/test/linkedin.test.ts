@@ -10,8 +10,17 @@ import { makeExport } from './fixtures/linkedin-export.ts';
 describe('LinkedIn', () => {
   it('escapes the little-text characters that would cut or garble a post', () => {
     expect(escapeLittleText('Use (a) [b] @me #tag *x* _y_ ~z~ <T> {c} | \\')).toBe(
-      'Use \\(a\\) \\[b\\] \\@me \\#tag \\*x\\* \\_y\\_ \\~z\\~ \\<T\\> \\{c\\} \\| \\\\',
+      'Use \\(a\\) \\[b\\] \\@me {hashtag|\\#|tag} \\*x\\* \\_y\\_ \\~z\\~ \\<T\\> \\{c\\} \\| \\\\',
     );
+    // A real hashtag stays clickable; a # inside code does not become one.
+    expect(escapeLittleText('#dev et a#b')).toBe('{hashtag|\\#|dev} et a\\#b');
+  });
+
+  it('dates: month/day by default, day/month when the file says so (review M5)', () => {
+    expect(isoDay('10/3/2026')).toBe('2026-10-03');
+    expect(isoDay('25/10/2026')).toBe('2026-10-25');
+    expect(isoDay('03/10/2026', true)).toBe('2026-10-03');
+    expect(isoDay('13/13/2026')).toBeNull();
   });
 
   it('posts through the official API: versioned headers, upload to LinkedIn only, URN back', async () => {

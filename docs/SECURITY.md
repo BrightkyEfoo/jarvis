@@ -196,6 +196,9 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   11434, 2375, 2376) : le navigateur n'est jamais dirigé vers eux. Ce n'est pas un pare-feu.
 
 - **Profils de navigateur** : illisibles pour tous les workers (cookies, sessions).
+- **Vérification de l'interface, garde** : le navigateur et les audits doivent être la commande
+  elle-même, jamais lancés à travers `env`, `nohup`, `xargs` ou les filtres d'un runner. Les
+  sorties sont des chemins absolus dans le dossier de la tâche.
 
 ## Forges (GitHub, GitLab, Trello)
 
@@ -310,6 +313,9 @@ Risque résiduel : R15 (tableau des risques connus).
 
 ## Scanners de sécurité (ADR-035)
 
+- **checkov et la configuration du projet** : un `.checkov.y(a)ml` dans le dossier scanné peut
+  charger des vérifications Python du dépôt. Jarvis ne lance donc pas checkov sur un tel projet
+  (scanner un dépôt ne doit jamais exécuter son code).
 - **Catalogue fixe** (`apps/jarvisd/src/security/catalogue.ts`) :
   - les seuls argv possibles sont écrits dans le code ; le modèle choisit le dossier, les contrôles,
     `offline` et une référence d'image validée, rien d'autre ;

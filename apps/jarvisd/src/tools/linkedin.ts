@@ -236,8 +236,13 @@ export function createLinkedInTools(d: LinkedInToolDeps): ToolDef[] {
     },
     summarize: (a) => `Import LinkedIn stats${a.path ? ` from ${a.path}` : ''}`,
     ingestsExternal: true,
-    run: async (a) => {
-      let file = a.path ? resolve(a.path.replace(/^~(?=\/)/, homedir())) : '';
+    run: async (a, ctx) => {
+      // The file read is the one classify authorised (fs policy path, or ~/Downloads).
+      let file = '';
+      if (a.path) {
+        const c = d.fs.check(a.path, 'read', ctx.cwd);
+        file = c.level < 4 ? c.path : resolve(a.path.replace(/^~(?=\/)/, homedir()));
+      }
       if (!file) {
         const dir = join(homedir(), 'Downloads');
         const candidates = existsSync(dir)
@@ -277,8 +282,13 @@ export function createLinkedInTools(d: LinkedInToolDeps): ToolDef[] {
         return `Pas assez de données (${stats.length} post(s) avec impressions) : importe un export LinkedIn plus long (linkedin_stats_import).`;
       const posts = d.store.posts(1000);
       const byDay = new Map<string, typeof posts>();
+      // The export's dates are local days: compare with the local day of publication.
+      const localDay = (iso: string) => {
+        const t = new Date(iso);
+        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+      };
       for (const p of posts) {
-        const day = p.createdAt.slice(0, 10);
+        const day = localDay(p.createdAt);
         byDay.set(day, [...(byDay.get(day) ?? []), p]);
       }
       const scored = score(

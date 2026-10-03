@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FsPolicy, N0, N4, Refusal, Session, type ToolDef } from '@jarvis/policy';
 import { Redactor } from '@jarvis/secrets';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ARGV, type ScannerId } from '../src/security/catalogue.ts';
 import {
@@ -34,7 +34,7 @@ import {
   newDependencies,
 } from '../src/security/pr-checks.ts';
 import { binaryLocator, versionOf } from '../src/security/run.ts';
-import { rankFindings, summarize } from '../src/security/scan.ts';
+import { planScan, rankFindings, summarize } from '../src/security/scan.ts';
 import { createSecurityTools } from '../src/tools/security.ts';
 import {
   CHECKOV_EMPTY,
@@ -62,6 +62,9 @@ const ctx = (check: Finding['check'] = 'secrets', secrets: string[] = []) => ({
   check,
   secret: (v: string) => secrets.push(v),
 });
+
+// Fake scanners are real processes: give them room when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 20_000 });
 
 describe('parsers (one per scanner, fixtures shaped like the real reports)', () => {
   it('gitleaks: rule, file:line, never the value; raw values are registered for scrubbing', () => {
@@ -212,6 +215,18 @@ describe('parsers (one per scanner, fixtures shaped like the real reports)', () 
   });
 });
 
+describe('project config', () => {
+  it("checkov is not run on a project that ships a .checkov.yml (it could load the project's Python)", () => {
+    const root = mkdtempSync(join(tmpdir(), 'ckv-'));
+    writeFileSync(join(root, '.checkov.yml'), 'external-checks-dir: [checks]\n');
+    const plan = planScan({ root, checks: ['iac'], image: null, offline: true }, (id) =>
+      id === 'checkov' ? '/opt/homebrew/bin/checkov' : null,
+    );
+    expect(plan.invocations).toHaveLength(0);
+    expect(plan.skipped[0]?.reason).toMatch(/\.checkov\.yml/);
+  });
+});
+
 describe('ranking and summary', () => {
   const f = (o: Partial<Finding>): Finding => ({
     tool: 'osv-scanner',
@@ -331,6 +346,32 @@ describe('pr checks (no network, no install)', () => {
       'index de paquets ajouté : risque de confusion de dépendances',
       'installation éditable depuis un chemin ou un dépôt',
       'directive replace : module remplacé par un fork ou un chemin local',
+    ]);
+  });
+
+  it('version bumps are not new dependencies; a bare URL is an outside source (review L8/L9)', () => {
+    const r = newDependencies(
+      [
+        {
+          path: 'requirements.txt',
+          before: 'requests==2.0\nDjango==4.2\n',
+          after: 'requests==2.1\ndjango==5.0\nhttps://evil.example/pkg.whl\nfile:///tmp/x.whl\n',
+        },
+        {
+          path: 'go.mod',
+          before: 'module x\n\nrequire github.com/a/b v1.0.0\n',
+          after: 'module x\n\nrequire github.com/a/b v1.1.0\n',
+        },
+      ],
+      () => [],
+    );
+    expect(r.deps.map((d) => d.name)).toEqual([
+      'https://evil.example/pkg.whl',
+      'file:///tmp/x.whl',
+    ]);
+    expect(r.warnings.map((w) => w.reason)).toEqual([
+      'source hors registre (https://evil.example/pkg.whl)',
+      'source hors registre (file:///tmp/x.whl)',
     ]);
   });
 

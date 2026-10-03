@@ -32,17 +32,18 @@ final class IslandController {
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = true
 
-        let geometry = Self.geometry()
+        let notch = Self.geometry()?.notch ?? .zero
         host = NSHostingView(rootView: AnyView(EmptyView()))
         host.rootView = AnyView(
-            IslandView(notch: geometry.notch, onStop: onStop) { [weak self] s in self?.resize(s) }
+            IslandView(notch: notch, onStop: onStop) { [weak self] s in self?.resize(s) }
                 .environmentObject(store)
         )
         panel.contentView = host
 
         // Re-evaluate on every store change (after it is applied) and when screens change.
         store.objectWillChange
-            .receive(on: RunLoop.main)
+            // DispatchQueue, not RunLoop: updates must arrive while a menu is being tracked too.
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.update() }
             .store(in: &bag)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
@@ -77,13 +78,14 @@ final class IslandController {
     private func resize(_ s: CGSize) {
         guard s.width > 1, s.height > 1, s != size else { return }
         size = s
-        place()
+        // Not inside SwiftUI's update pass: resize on the next turn of the main queue.
+        DispatchQueue.main.async { [weak self] in self?.place() }
     }
 
     /// Top centre of the screen with the menu bar: flush with the top edge under a notch, just
     /// below the menu bar otherwise.
     private func place() {
-        let g = Self.geometry()
+        guard let g = Self.geometry() else { return }
         let top = g.notch.height > 0 ? g.screen.frame.maxY : g.screen.visibleFrame.maxY
         panel.setFrame(
             NSRect(x: g.screen.frame.midX - size.width / 2, y: top - size.height, width: size.width, height: size.height),
@@ -91,8 +93,9 @@ final class IslandController {
         )
     }
 
-    static func geometry() -> (screen: NSScreen, notch: CGSize) {
-        guard let screen = NSScreen.screens.first else { return (NSScreen.main!, .zero) }
+    /// Nil while no screen is attached (clamshell, monitor unplugged): nothing to place then.
+    static func geometry() -> (screen: NSScreen, notch: CGSize)? {
+        guard let screen = NSScreen.screens.first ?? NSScreen.main else { return nil }
         let inset = screen.safeAreaInsets.top
         guard inset > 0 else { return (screen, .zero) }
         let left = screen.auxiliaryTopLeftArea?.width ?? 0, right = screen.auxiliaryTopRightArea?.width ?? 0

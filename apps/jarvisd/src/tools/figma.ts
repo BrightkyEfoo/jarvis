@@ -84,6 +84,8 @@ const q = (s: unknown, max = 80): string => {
   return `"${t.length > max ? `${t.slice(0, max)}…` : t}"`;
 };
 
+const WRITES = new Set(['create_frame', 'set_text', 'rename', 'bind_variable', 'create_component']);
+
 function failure(e: unknown): never {
   if (!(e instanceof FigmaError)) throw e;
   if (!e.fromPlugin) throw new Error(e.message);
@@ -201,6 +203,11 @@ export function createFigmaTools(d: FigmaToolDeps): ToolDef[] {
     try {
       raw = await d.bridge.perform(kind, args, signal, timeoutMs);
     } catch (e) {
+      // A write that timed out may still land in Figma afterwards: no blind retry.
+      if (e instanceof FigmaError && e.code === 'timeout' && WRITES.has(kind))
+        throw new Error(
+          `${e.message}. It may still have been applied: read the "${DRAFTS_PAGE}" page (figma_read_selection) before retrying.`,
+        );
       failure(e);
     }
     const parsed = (RESULTS[kind] as z.ZodType).safeParse(raw);

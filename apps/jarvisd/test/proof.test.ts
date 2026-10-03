@@ -60,7 +60,25 @@ describe('proof before PR', () => {
     expect(proofOf(undefined).short).toBe('non vérifiée (aucun test lancé)');
     expect(proofOf([{ command: 'pnpm test', ok: false }]).status).toBe('failing');
     expect(proofOf([{ command: 'pnpm test', ok: true }], true).status).toBe('stale');
-    expect(proofOf([{ command: 'echo `x`', ok: true }]).markdown).toBe("- ✅ `echo 'x'`");
+    expect(proofOf([{ command: 'pnpm test -t `x`', ok: true }]).markdown).toBe(
+      "- ✅ `pnpm test -t 'x'`",
+    );
+  });
+
+  it('screenshots and audits never vouch for the code (review M2)', () => {
+    // tests, then an edit, then a screenshot: the tests are stale.
+    const p = new ProofRecorder();
+    p.bash('pnpm test', true);
+    p.tool('Edit');
+    p.bash(
+      '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --screenshot=/w/ui/a.png --window-size=375,800 http://127.0.0.1:3000/',
+      true,
+    );
+    expect(p.result().editedAfterChecks).toBe(true);
+    // only captures or audits, no test: not verified.
+    expect(
+      proofOf([{ command: 'lighthouse http://127.0.0.1:3000/ --output=json', ok: true }]).status,
+    ).toBe('none');
   });
 });
 

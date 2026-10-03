@@ -182,8 +182,13 @@
         return;
       }
       if (!res.ok) return offline(gen);
-      const body = await res.json();
-      const op = body.op;
+      let body;
+      try {
+        body = await res.json();
+      } catch (_e) {
+        return offline(gen);
+      }
+      const op = body?.op;
       if (!op || typeof op.id !== 'string') continue;
       setStatus(`Jarvis : ${LABELS[op.kind] || 'opération'}…`, 'ok');
       const r = await runOp(op);

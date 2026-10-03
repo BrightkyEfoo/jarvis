@@ -196,6 +196,27 @@ describe('worker guard with browser checks on (ADR-036)', () => {
     nope(uiGuard, shot('--disable-web-security'), /ui\.browser/);
   });
 
+  it('the browser and the audits cannot be started through another command (review M3)', () => {
+    nope(
+      uiGuard,
+      `env "${CHROME}" --headless=new --remote-debugging-port=9222 http://evil.example/`,
+      /worker\.ui\.wrapper/,
+    );
+    nope(uiGuard, `nohup "${CHROME}" --headless=new http://evil.example/`, /worker\.ui\.wrapper/);
+    nope(uiGuard, `xargs "${CHROME}"`, /worker\.ui\.wrapper/);
+    nope(
+      lhGuard,
+      'pnpm --filter web exec lighthouse https://evil.example --output-path=/tmp/x.json',
+      /worker\.ui\.wrapper/,
+    );
+    // Relative output paths are refused: the proof reads them later from another directory.
+    nope(
+      uiGuard,
+      shot().replace(/--screenshot=\S+/, '--screenshot=../ui/a.png'),
+      /worker\.ui\.output/,
+    );
+  });
+
   it('the dev server stays on loopback', () => {
     yes(uiGuard, 'pnpm exec vite --host 127.0.0.1 --port 5173 --strictPort');
     yes(uiGuard, 'pnpm exec next dev -H 127.0.0.1 -p 3000');

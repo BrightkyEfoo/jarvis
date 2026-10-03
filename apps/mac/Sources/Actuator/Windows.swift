@@ -200,7 +200,11 @@ extension ScreenActor {
             case "minimize":
                 try set(win, kAXMinimizedAttribute, kCFBooleanTrue)
             case "restore":
-                try set(win, kAXMinimizedAttribute, kCFBooleanFalse)
+                // The minimized window, not the focused one (that one is not minimized).
+                let el = AXUIElementCreateApplication(app.processIdentifier)
+                let all = attr(el, kAXWindowsAttribute) as? [AXUIElement] ?? []
+                let target = all.first { (attr($0, kAXMinimizedAttribute) as? Bool) == true } ?? win
+                try set(target, kAXMinimizedAttribute, kCFBooleanFalse)
                 try activate(app)
             case "fullscreen":
                 let on = (attr(win, "AXFullScreen") as? Bool) ?? false

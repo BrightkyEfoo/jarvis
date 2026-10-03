@@ -166,7 +166,9 @@ export class FigmaBridge {
   /** A plugin said hello and is polling (or polled within the last few seconds). */
   get connected(): boolean {
     if (!this.#session) return false;
-    return this.#waiting !== null || Date.now() - this.#lastSeen < 5_000;
+    // A plugin running an operation does not poll meanwhile: it is busy, not gone.
+    const busy = [...this.#pending.values()].some((p) => p.session === this.#session);
+    return this.#waiting !== null || busy || Date.now() - this.#lastSeen < 5_000;
   }
 
   info(): FigmaBridgeInfo {

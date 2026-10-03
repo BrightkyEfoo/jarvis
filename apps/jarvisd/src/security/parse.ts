@@ -201,7 +201,9 @@ export const parseOsv: Parser = (doc, ctx) => {
         const ids = arr(g.ids).map(str).filter(Boolean);
         const members = vulns.filter((v) => ids.includes(str(v.id)));
         const main = members[0] ?? {};
-        let severity = cvssSeverity(num(g.max_severity));
+        // A score of 0 (or none) means "no CVSS", not "harmless": fall back to the advisory's word.
+        const score = num(g.max_severity);
+        let severity = score ? cvssSeverity(score) : 'unknown';
         if (severity === 'unknown') severity = wordSeverity(obj(main.database_specific).severity);
         const fixed = pickFix(str(pkg.version), [
           ...new Set(members.flatMap((v) => osvFixed(v, pkg))),

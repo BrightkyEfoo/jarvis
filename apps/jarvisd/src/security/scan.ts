@@ -96,12 +96,33 @@ export function planScan(
   locate: Locate,
 ): { invocations: Invocation[]; skipped: Skip[] } {
   const { root, offline } = req;
+  const invocations: Invocation[] = [];
+  const skipped: Skip[] = [];
+  // checkov reads .checkov.y(a)ml from the scanned folder, which can load Python checks from the
+  // repository (external-checks-dir): scanning would run the project's code outside any sandbox.
+  const checkovConfig = ['.checkov.yaml', '.checkov.yml'].some((f) => {
+    try {
+      return lstatSync(join(root, f)).isFile() || lstatSync(join(root, f)).isSymbolicLink();
+    } catch {
+      return false;
+    }
+  });
+  let checkovRefused = false;
   const find = (id: ScannerId) => {
+    if (id === 'checkov' && checkovConfig) {
+      if (!checkovRefused)
+        skipped.push({
+          check: 'iac',
+          reason:
+            'checkov non lancé : le projet a un .checkov.yml qui pourrait lui faire exécuter son code',
+          missing: [],
+        });
+      checkovRefused = true;
+      return null;
+    }
     const p = locate(id);
     return p && outsideProject(p, root) ? p : null;
   };
-  const invocations: Invocation[] = [];
-  const skipped: Skip[] = [];
   const add = (i: Invocation) => invocations.push(i);
   const missing = (check: CheckId, ids: ScannerId[]) =>
     skipped.push({ check, reason: `${ids.join(' ou ')} non installé`, missing: ids });
