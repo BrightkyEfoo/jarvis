@@ -913,3 +913,38 @@ identifiants. Les incidents de 2026 du rapport « Jarvis pour les équipes tech 
 - écrire le workflow de CI par l'API (il faudrait la permission « workflows » sur les tokens) ;
 - stocker des clés de prod longue durée hors du Trousseau ;
 - laisser Claude Code déployer depuis un worker.
+
+## ADR-037 — LinkedIn : publier par l'API officielle, apprendre de l'export (03/10/2026)
+
+**Demande de Brightky** : des posts LinkedIn « qui font du sens », avec des captures de texte. Jarvis
+doit apprendre des publications qui ne marchent pas et être « un super manager pour gérer mes
+communautés ».
+
+**Contexte** (recherche du 03/10/2026, `research_notes/LinkedIn pour Jarvis/`) :
+- **Publier** : seul « Share on LinkedIn » (`w_member_social`) est gratuit et sans revue. Il sert à
+  écrire, pas à lire.
+- **Statistiques** : celles des membres (`memberCreatorPostAnalytics`) sont réservées aux entreprises
+  immatriculées. L'export XLSX d'Analytics est ouvert à tous.
+- **Règles** : le contrat interdit les scripts, extensions et méthodes automatisées sur le site
+  (§8.2), et les conditions de l'API interdisent d'automatiser la publication.
+- **Application** : elle se durcit (détection de milliers d'extensions, Pages d'outils supprimées).
+
+**Décision** :
+- **Publication** par l'API officielle, uniquement au moment de la validation N2 du texte exact.
+  Aucune file de publication automatique.
+- **Visuels** :
+  - cartes rendues localement par Jarvis.app (SwiftUI) ;
+  - captures de fenêtre ;
+  - un PDF des dossiers autorisés.
+  - Rien d'autre ne peut être joint.
+- **Apprentissage** : l'export XLSX est lu en local. Chaque post est rapporté à la médiane des 10
+  précédents (tops ×1,5, flops ×0,6). Les formats sont comparés par hypothèses, avec au moins 3
+  posts de chaque côté. Un post publié par Jarvis est relié à ses statistiques par sa date (l'URN
+  publié et celui de l'export diffèrent).
+- **Navigateur** : linkedin.com est interdit au pilotage, dans le daemon et dans l'app.
+
+**Écarté** :
+- piloter linkedin.com, même pour lire ses propres statistiques ;
+- les API non officielles et le partage du cookie de session ;
+- la programmation automatique ;
+- le Community Management API, tant qu'il n'y a pas de structure immatriculée.

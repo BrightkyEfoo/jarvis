@@ -42,7 +42,8 @@ enum ActGuard {
 
     private static let forbiddenHosts = ["paypal.com", "stripe.com", "wise.com", "revolut.com", "1password.com", "lastpass.com",
                                          "bitwarden.com", "accounts.google.com", "myaccount.google.com", "passwords.google.com",
-                                         "pay.google.com", "appleid.apple.com", "account.apple.com", "orangemoney.cm"]
+                                         "pay.google.com", "appleid.apple.com", "account.apple.com", "orangemoney.cm",
+                                         "linkedin.com"]
 
     static func check(url: String) throws {
         guard let u = URL(string: url), let host = u.host?.lowercased() else { return }

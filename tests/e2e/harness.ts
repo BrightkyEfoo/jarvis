@@ -445,6 +445,7 @@ export async function startHarness(
     /** Rewrites the example policy (e.g. to declare servers); the seal follows. */
     policyPatch?: (yaml: string) => string;
     ops?: RuntimeOptions['ops'];
+    linkedin?: RuntimeOptions['linkedin'];
   } = {},
 ): Promise<Harness> {
   // Short root: macOS caps Unix socket paths at 104 bytes.
@@ -502,6 +503,7 @@ export async function startHarness(
     research: { researcher, youtube: new FakeYouTube() },
     ...(opts.workerRunner && { workerRunner: opts.workerRunner }),
     ...(opts.ops && { ops: opts.ops }),
+    ...(opts.linkedin && { linkedin: opts.linkedin }),
   });
   const server = await startServer(rt, paths.socket);
 

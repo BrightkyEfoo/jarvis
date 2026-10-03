@@ -487,6 +487,58 @@ async function vaultCommand(sub: string | undefined, name: string | undefined): 
   }
 }
 
+/**
+ * `jarvis linkedin connect`: Brightky's own LinkedIn developer app (free "Share on LinkedIn" +
+ * "Sign In with LinkedIn using OpenID Connect"), then the OAuth consent in his browser. Client
+ * secret and token go to the Keychain; the token lasts 60 days.
+ */
+async function linkedinConnect(): Promise<void> {
+  const { KeychainStore, SecretName } = await import('@jarvis/secrets');
+  const { connectLinkedIn, LINKEDIN_REDIRECT } = await import('@jarvis/connectors');
+  const { execFile } = await import('node:child_process');
+  const store = new KeychainStore();
+  try {
+    let app = (() => {
+      try {
+        return JSON.parse(store.get(SecretName.linkedinApp) ?? 'null') as {
+          client_id: string;
+          client_secret: string;
+        } | null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!app) {
+      console.log(
+        dim(
+          'Crée ton app (gratuit) : https://www.linkedin.com/developers/apps/new — associée à ta Page LinkedIn.\n' +
+            '  Produits : « Share on LinkedIn » et « Sign In with LinkedIn using OpenID Connect ».\n' +
+            `  Auth › Authorized redirect URLs : ${LINKEDIN_REDIRECT}`,
+        ),
+      );
+      const client_id = await askLine('Client ID : ');
+      const client_secret = client_id ? await askHidden('Client Secret : ') : '';
+      if (!client_id || !client_secret) return;
+      app = { client_id, client_secret };
+    }
+    console.log(dim('Ouverture de LinkedIn dans ton navigateur…'));
+    const token = await connectLinkedIn({
+      app,
+      openUrl: (url) =>
+        new Promise((ok, ko) => execFile('/usr/bin/open', [url], (e) => (e ? ko(e) : ok()))),
+    });
+    store.set(SecretName.linkedinApp, JSON.stringify(app));
+    store.set(SecretName.linkedinToken, JSON.stringify(token));
+    const days = Math.round((token.expires_at - Date.now()) / 86_400_000);
+    console.log(
+      `✔ LinkedIn connecté${token.name ? ` (${token.name})` : ''}, jeton valable ${days} jours.`,
+    );
+  } catch (e) {
+    console.error(red(`✖ ${(e as Error).message}`));
+    process.exitCode = 1;
+  }
+}
+
 /** Opens the dashboard window of Jarvis.app (launching the app if needed). */
 async function dashboardCommand(): Promise<void> {
   const { execFileSync } = await import('node:child_process');
@@ -578,6 +630,7 @@ const HELP = `jarvis — assistant de Brightky
   jarvis daemon [--dev]        lancer le daemon (--dev : policy non scellée, N3 désactivé)
   jarvis auth set-token        enregistrer le token d'abonnement (claude setup-token)
   jarvis pin set               définir / changer le PIN N3
+  jarvis linkedin connect      publier sur LinkedIn par l'API officielle (gratuite)
   jarvis vault set <nom> | list | rm <nom>   coffre (Trousseau) : jetons de déploiement, secrets de CI…
   jarvis policy check <file>   valider un fichier de policy (schéma, YAML)
   jarvis policy verify         vérifier le sceau de la policy
@@ -821,6 +874,13 @@ async function main(argv: string[]): Promise<void> {
       return forgeConnect(cmd, rest.slice(1));
     case 'vault':
       return vaultCommand(rest[0], rest[1]);
+    case 'linkedin':
+      if (rest[0] !== 'connect') {
+        console.error('usage : jarvis linkedin connect');
+        process.exitCode = 1;
+        return;
+      }
+      return linkedinConnect();
     case 'auth':
     case 'pin':
     case 'policy':

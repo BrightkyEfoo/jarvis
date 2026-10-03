@@ -14,5 +14,6 @@ export {
   parseClientFile,
 } from './google/oauth.ts';
 export { type ImapAccountConfig, ImapProvider, tlsOptions } from './imap/imap.ts';
+export * from './linkedin/linkedin.ts';
 export { buildMessage, htmlToText } from './mime.ts';
 export * from './types.ts';

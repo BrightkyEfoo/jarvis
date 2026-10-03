@@ -257,6 +257,19 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   - Les workers ne touchent jamais au workflow : Brightky le relit et le pousse.
 - **Coolify** : HTTPS seulement, jeton lu dans le coffre, aucune redirection suivie.
 
+## LinkedIn (ADR-037)
+
+- **API officielle uniquement**. Le navigateur ne pilote jamais linkedin.com (N4, daemon et app) :
+  c'est interdit par LinkedIn et risqué pour le compte de Brightky.
+- **Publication = N2**, avec le texte exact dans la validation, au moment où Brightky la donne.
+  Jamais de file qui publie seule.
+- **Pièces jointes** : seulement les visuels créés par Jarvis (identifiants internes) ou un PDF qui
+  passe la politique de fichiers. Le modèle ne peut pas joindre un fichier arbitraire du Mac. Les
+  chemins des images sont dans la validation, pour que Brightky les vérifie.
+- **Upload** : vers les hôtes de LinkedIn uniquement, en HTTPS ; une autre adresse est refusée.
+- **Jeton** (60 jours) au Trousseau, déclaré au filtre de masquage, jamais dans l'audit.
+- **Statistiques** : export XLSX téléchargé par Brightky, lu en local. Aucune lecture du site.
+
 ## Zéro coût, zéro fuite de facturation
 
 - **Environnement du sous-process** : il est construit de zéro. `ANTHROPIC_API_KEY` ne peut pas y

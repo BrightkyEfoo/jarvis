@@ -53,6 +53,7 @@ export type ActuatorAction =
   | { kind: 'reminders.complete'; id: string }
   | { kind: 'screen.look'; app?: string; display?: number }
   | { kind: 'apps.windows' }
+  | { kind: 'render.card'; style: 'quote' | 'code'; text: string; title?: string; footer?: string }
   | { kind: 'apps.quit'; apps: string[] }
   | { kind: 'window.manage'; app: string; action: WindowAction; display?: number }
   | { kind: 'screen.probe'; app: string; element?: number; x?: number; y?: number }

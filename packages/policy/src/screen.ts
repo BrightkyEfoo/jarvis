@@ -82,6 +82,9 @@ const BUILTIN_FORBIDDEN_SITES = [
   'console.aws.amazon.com',
   'console.cloud.google.com/iam-admin',
   'dashboard.stripe.com',
+  // LinkedIn forbids automating its site (User Agreement §8.2): driving it risks Brightky's account.
+  // Jarvis posts through the official API instead (ADR-037).
+  'linkedin.com',
 ];
 /** Anywhere in the host name ("afrilandfirstbank.com", "ebanking.ecobank.com"). */
 const BANK_HOST =
@@ -154,7 +157,9 @@ export function forbiddenUrl(url: string, rules: ScreenRules): string | null {
     const [h = '', ...rest] = site.split('/');
     const path = rest.length ? `/${rest.join('/')}` : '';
     if (hostMatches(host, h) && (!path || u.pathname.toLowerCase().startsWith(path))) {
-      return `${site} is off-limits (payments, passwords or account security)`;
+      return site === 'linkedin.com'
+        ? 'LinkedIn forbids automating its site (account at risk): post with linkedin_post, the official API'
+        : `${site} is off-limits (payments, passwords or account security)`;
     }
   }
   return null;

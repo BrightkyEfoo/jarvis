@@ -13,6 +13,8 @@ import {
   GoogleCalendar,
   type GoogleClient,
   ImapProvider,
+  LinkedInClient,
+  type LinkedInToken,
   type MailProvider,
   MergedCalendar,
   TrelloClient,
@@ -31,6 +33,7 @@ import {
 } from '@jarvis/policy';
 import { Redactor, SecretName, type SecretStore } from '@jarvis/secrets';
 import { type Actuator, ActuatorBridge } from '../computer/bridge.ts';
+import { LinkedInStore } from '../linkedin/store.ts';
 import { ed25519KeyPair, ForgeSecrets, knownHostsFor } from '../ops/secrets.ts';
 import { OpenSsh } from '../ops/ssh.ts';
 import { Vault } from '../ops/vault.ts';
@@ -47,6 +50,7 @@ import type { AppPaths } from '../paths.ts';
 import { createComputerTools } from '../tools/computer.ts';
 import { createForgeTools, workBriefing } from '../tools/forge.ts';
 import { createTools } from '../tools/index.ts';
+import { createLinkedInTools } from '../tools/linkedin.ts';
 import { createMacTools, type MacOps, realMacOps } from '../tools/macos.ts';
 import { createMailTools } from '../tools/mail.ts';
 import { createMemoryTools } from '../tools/memory.ts';
@@ -94,6 +98,8 @@ export interface RuntimeOptions {
   workerRunner?: WorkerRunner;
   /** Tests inject fake forges; production builds them from the Keychain tokens. */
   forges?: { forges: Map<ForgeId, ForgeClient>; trello: TrelloClient | null };
+  /** Tests inject a fake LinkedIn API; production reads the token from the Keychain. */
+  linkedin?: { client: () => LinkedInClient | null; token: () => LinkedInToken | null };
   /** Tests inject fake SSH, CI secrets and key generation; production uses ssh, gh and the GitLab API. */
   ops?: Partial<Pick<OpsToolDeps, 'ssh' | 'secrets' | 'keyPair' | 'knownHosts' | 'fetch'>>;
 }
@@ -398,6 +404,34 @@ export function createRuntime(o: RuntimeOptions): Runtime {
   const actuator = o.actuator ?? bridge;
   for (const t of createComputerTools({ policy, actuator })) gate.register(t);
 
+  // LinkedIn (ADR-037): official API only, publish on approval; stats from Brightky's export.
+  const linkedinStore = new LinkedInStore(paths.linkedinDb);
+  const linkedinToken = (): LinkedInToken | null => {
+    try {
+      const raw = o.secrets.get(SecretName.linkedinToken);
+      const t = raw ? (JSON.parse(raw) as LinkedInToken) : null;
+      if (t) redactor.register('linkedin_token', t.access_token);
+      return t;
+    } catch {
+      return null;
+    }
+  };
+  for (const t of createLinkedInTools({
+    policy,
+    store: linkedinStore,
+    token: o.linkedin?.token ?? linkedinToken,
+    client:
+      o.linkedin?.client ??
+      (() => {
+        const t = linkedinToken();
+        return t ? new LinkedInClient({ token: () => t.access_token }) : null;
+      }),
+    actuator,
+    fs,
+    assetsDir: join(paths.scratch, 'linkedin'),
+  }))
+    gate.register(t);
+
   for (const t of createForgeTools({ ...forges, maxDiffChars: policy.forges.max_diff_chars }))
     gate.register(t);
 
@@ -546,6 +580,7 @@ export function createRuntime(o: RuntimeOptions): Runtime {
       await workerManager.shutdown();
       audit.close();
       taskStore.close();
+      linkedinStore.close();
       memory.close();
     },
   };

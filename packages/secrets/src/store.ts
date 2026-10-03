@@ -17,6 +17,9 @@ export const SecretName = {
   gitlabToken: 'gitlab.token',
   trelloKey: 'trello.key',
   trelloToken: 'trello.token',
+  /** LinkedIn developer app (client id + secret, JSON) and the member token (JSON, 60 days). */
+  linkedinApp: 'linkedin.app',
+  linkedinToken: 'linkedin.token',
   /** Values Brightky puts in Jarvis's vault (jarvis vault set): deploy tokens, CI secrets… */
   vault: (name: string) => `vault.${name}`,
   /** Names in the vault (the Keychain cannot list them). */

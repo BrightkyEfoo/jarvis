@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.17.0 — LinkedIn, community manager (03/10/2026)
+
+### Ajouté
+- **Publication sur LinkedIn par l'API officielle gratuite** (« Share on LinkedIn », OAuth local,
+  `jarvis linkedin connect`). Jarvis publie **au moment où Brightky valide le texte exact** (N2),
+  jamais en différé. Les caractères réservés du format LinkedIn sont échappés : le code passe tel
+  quel.
+- **Visuels** :
+  - `linkedin_card` : citation ou extrait de code mis en carte 1080×1350 signée, rendue nativement
+    par Jarvis.app (taille du code calculée pour qu'aucune ligne ne se replie) ;
+  - `linkedin_screenshot` : capture d'une fenêtre (jamais d'app protégée).
+  - Seuls ces visuels, ou un PDF de ses dossiers (post « document »), peuvent être joints.
+- **Apprendre de ses posts** :
+  - `linkedin_stats_import` lit l'export XLSX d'Analytics (sans dépendance : unzip et XML) ;
+  - `linkedin_insights` compare chaque post à la médiane de ses 10 précédents, sort les tops et
+    les flops, et des hypothèses sur les formats (PDF, images, liens, accroche, longueur, horaire).
+- **Community management** : brouillons de réponses aux commentaires (depuis les mails de
+  notification) et rappels de publication. Brightky reste celui qui poste.
+- **linkedin.com interdit au pilotage du navigateur**, dans le daemon et dans Jarvis.app :
+  LinkedIn interdit l'automatisation de son site.
+- Guide : `docs/SETUP-LINKEDIN.md`.
+
 ## 0.16.0 — Serveurs et déploiements (03/10/2026)
 
 ### Ajouté

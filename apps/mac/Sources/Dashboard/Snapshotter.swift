@@ -38,6 +38,26 @@ enum Snapshotter {
     /// The island in each of its states, over a wallpaper-like backdrop.
     private static var demoApprovals: [Approval] = []
 
+    /// LinkedIn cards ("screenshots of text"), quote and code.
+    @MainActor
+    private static func renderCards(directory: String) {
+        let quote = PostCard(kind: "quote", title: nil,
+                             text: "Un bon assistant ne code pas plus vite que toi. Il trie, prouve et résume, pour que tu décides mieux.",
+                             footer: "Brightky Efo'o")
+        let code = PostCard(kind: "code", title: "Preuve avant la PR",
+                            text: "const proof = proofOf(outcome.checks)\nif (proof.status !== 'verified') {\n  pr.draft = true\n  pr.body += proof.markdown\n}\n// ✅ pnpm test · ✅ pnpm lint",
+                            footer: "Brightky Efo'o")
+        for (name, card) in [("card-quote", AnyView(quote)), ("card-code", AnyView(code))] {
+            let r = ImageRenderer(content: card)
+            r.scale = 0.5
+            if let cg = r.cgImage, let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: "\(directory)/\(name).png"))
+            }
+        }
+        print("✔ snapshots in \(directory)")
+        exit(0)
+    }
+
     private static func renderIslands(store: Store, directory: String, index: Int) {
         if index == 0 { demoApprovals = store.approvals }
         let approvals = demoApprovals
@@ -52,8 +72,8 @@ enum Snapshotter {
             ("stopped", { $0.status?.stop = "STOP (barre de menus)" }),
         ]
         guard index < scenes.count else {
-            print("✔ snapshots in \(directory)")
-            exit(0)
+            MainActor.assumeIsolated { renderCards(directory: directory) }
+            return
         }
         let (name, apply) = scenes[index]
         apply(store)

@@ -16,6 +16,7 @@ export interface AppPaths {
   scratch: string;
   /** Worker queue (SQLite) and per-task logs. */
   workersDb: string;
+  linkedinDb: string;
   workerLogs: string;
   /** CLAUDE_CONFIG_DIR of the coding workers (separate from the brain's). */
   workerConfig: string;
@@ -36,6 +37,7 @@ export function appPaths(root = process.env.JARVIS_HOME ?? DEFAULT_ROOT): AppPat
     claudeConfig: join(root, 'claude-config'),
     scratch: join(root, 'scratch'),
     workersDb: join(root, 'data', 'workers.db'),
+    linkedinDb: join(root, 'data', 'linkedin.db'),
     workerLogs: join(root, 'logs', 'workers'),
     workerConfig: join(root, 'worker-config'),
   };
