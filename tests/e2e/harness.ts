@@ -41,6 +41,7 @@ import type {
   ResearchRequest,
   ResearchResult,
 } from '../../apps/jarvisd/src/orchestrator/research.ts';
+import type { Locate } from '../../apps/jarvisd/src/security/run.ts';
 import type { VideoHit, VideoInfo, YouTube } from '../../apps/jarvisd/src/tools/research.ts';
 import type { WorkerRunner } from '../../apps/jarvisd/src/workers/runner.ts';
 
@@ -433,7 +434,12 @@ export interface Rpc {
 }
 
 export async function startHarness(
-  opts: { devMode?: boolean; workerRunner?: WorkerRunner } = {},
+  opts: {
+    devMode?: boolean;
+    workerRunner?: WorkerRunner;
+    /** Fake scanner binaries; by default none is "installed", whatever the machine has. */
+    securityLocate?: Locate;
+  } = {},
 ): Promise<Harness> {
   // Short root: macOS caps Unix socket paths at 104 bytes.
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'jv-')));
@@ -483,6 +489,7 @@ export async function startHarness(
       summarizer: new FakeSummarizer(),
     },
     research: { researcher, youtube: new FakeYouTube() },
+    security: { locate: opts.securityLocate ?? (() => null) },
     ...(opts.workerRunner && { workerRunner: opts.workerRunner }),
   });
   const server = await startServer(rt, paths.socket);

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ForgeClient, ForgeId } from '@jarvis/connectors';
 import type { KillSwitch } from '@jarvis/policy';
+import { depsMarkdown, isManifest, newDependencies, readLockfiles } from '../security/pr-checks.ts';
 import { AI_TRAILER, BRANCH, type Git, type GitAuth, slug } from './git.ts';
 import { PROTECTED, workerGuard } from './guard.ts';
 import { proofOf } from './proof.ts';
@@ -42,6 +43,8 @@ export interface WorkerManagerDeps {
   killswitch: KillSwitch;
   /** True when a string contains a known secret or a token pattern. */
   containsSecret: (text: string) => boolean;
+  /** gitleaks on the added lines when installed: rule ids, [] when clean, null when not run. */
+  scanDiff?: (diff: string, signal: AbortSignal) => Promise<string[] | null>;
   emit: (e: WorkerEvent) => void;
   home: string;
   dir: string;
@@ -319,6 +322,32 @@ export class WorkerManager {
       const diff = await d.git.run(['diff', '--cached'], { cwd: worktree, signal });
       if (d.containsSecret(diff))
         throw new Error('un secret apparaît dans le diff : rien n’est publié');
+      // Second opinion when gitleaks is installed; a missing or failing tool never blocks.
+      const leaks = d.scanDiff ? await d.scanDiff(diff, signal).catch(() => null) : null;
+      if (leaks?.length)
+        throw new Error(
+          `gitleaks signale un secret dans le diff (${leaks.slice(0, 3).join(', ')}) : rien n’est publié`,
+        );
+      log(
+        leaks
+          ? 'gitleaks : rien dans le diff'
+          : 'gitleaks non lancé : motifs du rédacteur seulement',
+      );
+      // New dependencies, from the manifests before and after: no network, no install.
+      const deps = newDependencies(
+        await Promise.all(
+          files.filter(isManifest).map(async (path) => ({
+            path,
+            before: await d.git
+              .run(['show', `origin/${base}:${path}`], { cwd: wt, signal })
+              .catch(() => null),
+            after: await d.git.run(['show', `:${path}`], { cwd: wt, signal }).catch(() => null),
+          })),
+        ),
+        (path) => readLockfiles(wt, path),
+      );
+      if (deps.deps.length)
+        log(`dépendances ajoutées : ${deps.deps.length}, à vérifier : ${deps.warnings.length}`);
 
       const clean = (s: string) =>
         s
@@ -338,6 +367,9 @@ export class WorkerManager {
       // Proof: the checks the worker really ran decide whether the PR is ready or a draft.
       const proof = proofOf(outcome.checks, outcome.editedAfterChecks);
       log(`preuve : ${proof.short}`);
+      // A dependency to look at twice keeps the PR a draft, flagged at the top of its body.
+      const ready = proof.status === 'verified' && deps.warnings.length === 0;
+      const depsSection = depsMarkdown(deps);
 
       // 4. Publish: a jarvis/… branch, then a pull request (never a merge).
       this.#step(task, 'publication', signal);
@@ -351,11 +383,13 @@ export class WorkerManager {
         head: branch,
         base,
         title,
-        draft: d.draftPr || proof.status !== 'verified',
+        draft: d.draftPr || !ready,
         body: [
+          ...(deps.warnings.length ? [depsSection, ''] : []),
           body || title,
           `\n### Vérifié par Jarvis\nCommandes réellement exécutées, dernier résultat de chacune :\n${proof.markdown}`,
           outcome.tests ? `\n### Compte rendu des vérifications\n${clean(outcome.tests)}` : '',
+          depsSection && !deps.warnings.length ? `\n${depsSection}` : '',
           `\n---\nTâche : ${task.prompt.slice(0, 500)}`,
         ].join('\n'),
       });
@@ -374,12 +408,16 @@ export class WorkerManager {
           files: files.length,
           costUsd: outcome.costUsd,
           proof: proof.status,
+          newDeps: deps.deps.length,
+          depWarnings: deps.warnings.length,
         },
       });
       this.#emit(
         d.store.update(task.id, {
           status: 'done',
-          step: `PR ${proof.status === 'verified' ? 'ouverte' : 'en brouillon'}, ${proof.short}`,
+          step: `PR ${ready ? 'ouverte' : 'en brouillon'}, ${proof.short}${
+            deps.warnings.length ? `, ${deps.warnings.length} dépendance(s) à vérifier` : ''
+          }`,
           prUrl: pr.url,
           endedAt: new Date().toISOString(),
         }),
