@@ -152,6 +152,9 @@ parsing, construction shell inconnue, erreur de classification) est N4.
   `.git/config` ou dans un message d'erreur.
 - **Paramètres d'un dépôt** : ceux de `.claude/settings.json` sont ignorés (`settingSources: []`),
   sinon un dépôt pourrait installer ses propres hooks ou une clé API.
+- **Preuve avant PR** (ADR-027, complément) : le statut « vérifié » d'une PR de worker vient des
+  résultats réels des commandes (hooks du SDK), jamais du texte du worker. Sans preuve verte et à
+  jour, la PR est un brouillon.
 
 ## Forges (GitHub, GitLab, Trello)
 
@@ -198,9 +201,6 @@ parsing, construction shell inconnue, erreur de classification) est N4.
 - **Captures** : envoyées au modèle, jamais écrites dans l'audit (empreinte et taille seulement).
   Les apps interdites ne sont jamais capturées. Sur un écran entier, elles sont exclues de
   l'image par ScreenCaptureKit.
-- **Preuve avant PR** (ADR-027, complément) : le statut « vérifié » d'une PR de worker vient des
-  résultats réels des commandes (hooks du SDK), jamais du texte du worker. Sans preuve verte et à
-  jour, la PR est un brouillon.
 - **Le bureau** (ADR-030) :
   - lister les fenêtres et regarder un écran : N0 ;
   - ranger, masquer ou réduire une fenêtre : N1 ;
