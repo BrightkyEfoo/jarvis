@@ -39,6 +39,20 @@ describe('forges (S5)', () => {
     expect(h.rt.approvals.pending()).toHaveLength(0);
   });
 
+  it('review queue: requested reviews and worker PRs, ranked, risk zones from the paths', async () => {
+    const out = await ask('call review_queue {}');
+    expect(out).toContain('<external_data source="review_queue">');
+    expect(out).toContain("File de revue : 2 PR (dont 1 de workers), la plus urgente d'abord.");
+    // Waiting since Sept 28, touching auth and a migration: first. The worker PR (red CI, no
+    // details) comes second.
+    expect(out).toMatch(
+      /1\. acme\/app#7 « Fix login timeout » de paul — attend depuis \d+ j · \+40 −12, 2 fichier\(s\) · CI verte · zones : auth, migrations/,
+    );
+    expect(out).toMatch(/2\. \[worker\] BrightkyEfoo\/jarvis#3 « Voice v2 »/);
+    expect(out).toContain('CI rouge : attendre le correctif');
+    expect(h.rt.approvals.pending()).toHaveLength(0);
+  });
+
   it('reads a PR with its diff; an injection in the description stays data', async () => {
     const out = await ask('call pr_read {"repo":"acme/app","number":7}');
     expect(out).toContain('### src/login.ts (modified, +3 −1)');

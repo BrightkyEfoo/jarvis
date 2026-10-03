@@ -18,6 +18,17 @@
   n'active pas Jarvis.app et ne vole pas le clavier, sauf pour un PIN.
 - Réglage : Tableau de bord › Réglages › Voix › « Île Jarvis sous l'encoche » (actif par défaut).
 - `--snapshot` rend aussi l'île dans ses 8 états, hors écran.
+- **File de revue** (`review_queue`, N0), sur GitHub et GitLab : les PR où l'on demande ta revue,
+  plus celles des workers (branches `jarvis/*`). Elles sont classées sans lire le diff :
+  - l'ancienneté d'abord ;
+  - puis les zones à risque, déduites des chemins : secrets, auth, migrations, CI, infra,
+    dépendances, grosse PR ;
+  - une CI rouge ou des changements demandés font descendre la PR (à l'auteur d'agir), une PR en
+    brouillon passe en dernier ;
+  - pour chaque PR : taille, CI et approbations.
+- **Pré-revue sans bruit** : seulement les problèmes sévères, cinq au plus, avec fichier:ligne et la
+  raison, jamais de pinaillage, et « rien de bloquant » si rien de grave. Un commentaire ne part
+  qu'avec son texte exact validé (N2).
 
 ## 0.14.0 — Le bureau (02/10/2026)
 

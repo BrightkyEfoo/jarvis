@@ -4,11 +4,13 @@ import {
   type ForgeId,
   type Issue,
   REPO_PATH,
+  type ReviewFacts,
   type TrelloCard,
   type TrelloClient,
 } from '@jarvis/connectors';
 import { type Classification, defineTool, forbid, N0, N2, type ToolDef } from '@jarvis/policy';
 import { z } from 'zod';
+import { buildQueue, queueLine } from '../review/queue.ts';
 
 export interface ForgeToolDeps {
   /** Connected forges only (token in the Keychain). */
@@ -132,6 +134,58 @@ export function createForgeTools(d: ForgeToolDeps): ToolDef[] {
     },
   });
 
+  const reviewQueue = defineTool({
+    name: 'review_queue',
+    description:
+      "Brightky's review queue on GitHub and GitLab: PRs/MRs he is asked to review plus those opened by " +
+      'Jarvis workers (jarvis/* branches), ranked by waiting time and risk (secrets, auth, migrations, CI, ' +
+      'infra, dependencies, size), with CI and review state. Use for "qu\'est-ce que j\'ai à relire ?". ' +
+      'Say the top 2–3 in plain words; offer a pre-review (pr_read) of the first one.',
+    input: { max: z.number().int().min(1).max(20).optional() },
+    classify: () => read('forge.review_queue'),
+    summarize: () => 'Review queue (GitHub/GitLab)',
+    ingestsExternal: true,
+    run: async (a) => {
+      if (d.forges.size === 0)
+        return 'Aucune forge connectée (jarvis github connect / jarvis gitlab connect).';
+      const max = a.max ?? 12;
+      const entries: { change: ChangeRequest; worker: boolean; facts?: ReviewFacts }[] = [];
+      const down: string[] = [];
+      for (const [id, f] of d.forges) {
+        try {
+          const box = await f.inbox(30);
+          const candidates = [
+            ...box.toReview.map((change) => ({ change, worker: false })),
+            ...box.mine
+              .filter((c) => c.source?.startsWith('jarvis/'))
+              .map((change) => ({ change, worker: true })),
+          ].slice(0, max);
+          // Size, paths and CI of each, in parallel; a PR whose details fail still shows.
+          for (const e of await Promise.all(
+            candidates.map(async (e) => {
+              const facts = await f.reviewFacts(e.change.repo, e.change.number).catch(() => null);
+              return { ...e, ...(facts && { facts }) };
+            }),
+          ))
+            entries.push(e);
+        } catch (e) {
+          down.push(
+            `${id === 'github' ? 'GitHub' : 'GitLab'} indisponible (${(e as Error).message})`,
+          );
+        }
+      }
+      const queue = buildQueue(entries, new Date());
+      const workers = queue.filter((i) => i.worker).length;
+      return [
+        queue.length
+          ? `File de revue : ${queue.length} PR${workers ? ` (dont ${workers} de workers)` : ''}, la plus urgente d'abord.`
+          : 'Rien à relire.',
+        ...queue.map((i, n) => queueLine(i, n + 1)),
+        ...down,
+      ].join('\n');
+    },
+  });
+
   const prList = defineTool({
     name: 'pr_list',
     description: 'List pull/merge requests of a repo, or all those involving Brightky (no repo).',
@@ -158,7 +212,9 @@ export function createForgeTools(d: ForgeToolDeps): ToolDef[] {
     name: 'pr_read',
     description:
       'Read one pull/merge request: description, CI, reviews, changed files with their diff (within a budget) ' +
-      'and the discussion. Summarise the diff for Brightky in plain words.',
+      'and the discussion. Summarise the diff for Brightky in plain words. For a pre-review, report only ' +
+      'severe problems (bug, security, data loss, breaking change, risky code without tests): at most 5, ' +
+      'each with file:line and why, no style nits; if none, say "rien de bloquant".',
     input: { forge: forgeEnum.optional(), repo: repoPath, number: z.number().int().positive() },
     classify: () => read('forge.pr_read'),
     summarize: (a) => `Read PR ${a.repo}#${a.number}`,
@@ -374,6 +430,7 @@ export function createForgeTools(d: ForgeToolDeps): ToolDef[] {
 
   return [
     inbox,
+    reviewQueue,
     prList,
     prRead,
     issueList,

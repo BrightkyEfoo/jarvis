@@ -817,7 +817,6 @@ protégée (identifiant de bundle), même sur ordre du daemon.
 **Écarté** : la fermeture forcée (perte de travail), et les clics à l'échelle de l'écran entier.
 Le contrôle « ce qui est réellement sous le pointeur » reste fait app par app.
 
-
 ## ADR-031 — L'île Jarvis (03/10/2026)
 
 **Contexte** : la recherche « Jarvis pour les équipes tech » (rapport local, proposition 6) et les
@@ -848,3 +847,23 @@ et garde toujours le STOP à portée de main.
 - le HUD plein écran façon Iron Man et l'orbe 3D permanent (coût GPU, distraction) ;
 - Liquid Glass : le Mac est sous macOS 15, d'où un noir opaque, lisible sur tous les fonds ;
 - l'île au survol de l'encoche au repos, à revoir si le besoin se confirme.
+
+## ADR-032 — File de revue déterministe (03/10/2026)
+
+**Contexte** (rapport « Jarvis pour les équipes tech », proposition 1) : le goulot d'étranglement
+s'est déplacé vers la relecture, et le bruit est la première cause d'abandon des bots de revue.
+
+**Décision** :
+- **`review_queue` (N0)** réunit les PR où Brightky est relecteur et celles des workers.
+- **Le classement est du code, pas du modèle** :
+  - les chemins des fichiers donnent les zones à risque ;
+  - le poids vient de l'ancienneté (plafonnée à 14 jours) et des zones ;
+  - une CI rouge, des changements demandés ou un brouillon font descendre la PR : c'est à
+    l'auteur d'agir.
+- **Coût réseau maîtrisé** : seulement les métadonnées, jamais le diff. Environ 4 appels par PR,
+  12 PR au plus.
+- **Pré-revue** : les consignes limitent la sortie aux problèmes sévères (5 au plus, fichier:ligne
+  et raison). Poster reste N2, avec le texte exact.
+
+**À venir** : quand Brightky juge un commentaire inutile, en faire une règle dans le CLAUDE.md du
+dépôt, et afficher la file dans le brief du matin.

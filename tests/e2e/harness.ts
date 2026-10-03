@@ -265,6 +265,7 @@ export class FakeForge implements ForgeClient {
           number: 3,
           title: 'Voice v2',
           author: 'BrightkyEfoo',
+          source: 'jarvis/3fa9c1d2',
           checks: 'failure',
           approvals: 1,
         },
@@ -274,6 +275,19 @@ export class FakeForge implements ForgeClient {
   }
   async listChanges() {
     return [this.#pr];
+  }
+  async reviewFacts(repo: string, number: number) {
+    if (repo === 'acme/app' && number === 7) {
+      return {
+        createdAt: '2026-09-28T10:00:00Z',
+        additions: 40,
+        deletions: 12,
+        paths: ['src/auth/session.ts', 'db/migrations/0042_add_token.sql'],
+        checks: 'success' as const,
+        approvals: 0,
+      };
+    }
+    throw new Error('not found');
   }
   async getChange(): Promise<ChangeDetail> {
     return {

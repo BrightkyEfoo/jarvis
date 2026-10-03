@@ -64,6 +64,7 @@ enum Wording {
         (#"^Cancel worker task "#, "Annuler la tâche "),
         (#"^Read worker log "#, "Journal du worker "),
         (#"^Forge inbox \(GitHub/GitLab\)$"#, "Ce qui m'attend sur GitHub et GitLab"),
+        (#"^Review queue \(GitHub/GitLab\)$"#, "File de revue GitHub et GitLab"),
         (#"^Read PR (\S+)$"#, "Lire la PR $1"),
         (#"^Read issue (\S+)$"#, "Lire l'issue $1"),
         (#"^List PRs of "#, "Lister les PR de "),

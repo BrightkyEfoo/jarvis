@@ -12,6 +12,7 @@ import {
   type NewChange,
   REPO_PATH,
   type RepoInfo,
+  type ReviewFacts,
 } from './types.ts';
 
 interface GlUser {
@@ -26,6 +27,7 @@ interface GlMr {
   work_in_progress?: boolean;
   state: 'opened' | 'closed' | 'merged' | 'locked';
   updated_at: string;
+  created_at?: string;
   source_branch: string;
   target_branch: string;
   user_notes_count: number;
@@ -154,6 +156,37 @@ export class GitLabClient implements ForgeClient {
       ...m,
       checks: checks(detail.head_pipeline?.status),
       approvals: approvals.approved_by.length,
+    };
+  }
+
+  async reviewFacts(repo: string, number: number): Promise<ReviewFacts> {
+    const id = project(repo);
+    const [m, diffs, approvals] = await Promise.all([
+      this.#http.get<GlMr>(`/projects/${id}/merge_requests/${number}`),
+      this.#http.all<GlDiff>(
+        `/projects/${id}/merge_requests/${number}/diffs`,
+        { per_page: 100 },
+        300,
+        nextPage,
+      ),
+      this.#http
+        .get<{ approved_by: unknown[] }>(`/projects/${id}/merge_requests/${number}/approvals`)
+        .catch(() => ({ approved_by: [] })),
+    ]);
+    const count = (prefix: string, skip: string) =>
+      diffs.reduce(
+        (n, d) =>
+          n + d.diff.split('\n').filter((l) => l.startsWith(prefix) && !l.startsWith(skip)).length,
+        0,
+      );
+    return {
+      ...(m.created_at && { createdAt: m.created_at }),
+      additions: count('+', '+++'),
+      deletions: count('-', '---'),
+      paths: diffs.map((d) => d.new_path),
+      checks: checks(m.head_pipeline?.status),
+      approvals: approvals.approved_by.length,
+      source: m.source_branch,
     };
   }
 

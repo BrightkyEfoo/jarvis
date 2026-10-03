@@ -13,6 +13,7 @@ import {
   type NewChange,
   REPO_PATH,
   type RepoInfo,
+  type ReviewFacts,
 } from './types.ts';
 
 interface GhUser {
@@ -43,6 +44,7 @@ interface GhPull {
   draft: boolean;
   merged_at: string | null;
   updated_at: string;
+  created_at?: string;
   body: string | null;
   additions: number;
   deletions: number;
@@ -220,6 +222,27 @@ export class GitHubClient implements ForgeClient {
       changesRequested: [...latest.values()].includes('CHANGES_REQUESTED'),
       source: pr.head.ref,
       target: pr.base.ref,
+    };
+  }
+
+  async reviewFacts(repo: string, number: number): Promise<ReviewFacts> {
+    checkRepo(repo);
+    const [pr, files] = await Promise.all([
+      this.#for(repo).get<GhPull>(`/repos/${repo}/pulls/${number}`),
+      this.#for(repo).all<GhFile>(
+        `/repos/${repo}/pulls/${number}/files`,
+        { per_page: 100 },
+        300,
+        linkNext,
+      ),
+    ]);
+    const state = await this.#status(repo, number).catch(() => ({}));
+    return {
+      ...(pr.created_at && { createdAt: pr.created_at }),
+      additions: pr.additions,
+      deletions: pr.deletions,
+      paths: files.map((f) => f.filename),
+      ...state,
     };
   }
 

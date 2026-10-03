@@ -65,6 +65,19 @@ export interface IssueDetail extends Issue {
   discussion: Comment[];
 }
 
+/** What a reviewer needs to triage a PR without reading it: size, touched paths, CI, reviews. */
+export interface ReviewFacts {
+  createdAt?: string;
+  additions: number;
+  deletions: number;
+  /** Changed file paths (at most 300). */
+  paths: string[];
+  checks?: ChecksState;
+  approvals?: number;
+  changesRequested?: boolean;
+  source?: string;
+}
+
 export interface ForgeInbox {
   /** Waiting for Brightky's review. */
   toReview: ChangeRequest[];
@@ -101,6 +114,8 @@ export interface ForgeClient {
     max: number;
   }): Promise<ChangeRequest[]>;
   getChange(repo: string, number: number, o: { maxPatchChars: number }): Promise<ChangeDetail>;
+  /** Size, paths, CI and reviews of one PR/MR, without the diff (review queue). */
+  reviewFacts(repo: string, number: number): Promise<ReviewFacts>;
   listIssues(o: { repo?: string; state: 'open' | 'closed' | 'all'; max: number }): Promise<Issue[]>;
   getIssue(repo: string, number: number): Promise<IssueDetail>;
   comment(
