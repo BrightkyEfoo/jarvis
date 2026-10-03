@@ -103,7 +103,7 @@ export class HttpJson {
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
       const next = location ? new URL(location, url) : null;
-      if (!next || next.protocol !== 'https:') throw new Error('redirection de log refusée');
+      if (next?.protocol !== 'https:') throw new Error('redirection de log refusée');
       res = await f(next.href, {
         headers: { 'user-agent': 'jarvis-assistant' },
         redirect: 'error',

@@ -176,10 +176,13 @@ export function budgetPatches(files: ChangedFile[], maxChars: number): ChangedFi
   });
 }
 
+/** ANSI colour codes (ESC [ … letter), built without a control character in a regex literal. */
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g');
+
 /** CI logs carry colours and per-line timestamps that only cost tokens. */
 export function cleanLog(log: string): string {
   return log
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(ANSI, '')
     .replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/gm, '')
     .replace(/\r/g, '')
     .replace(/\n{3,}/g, '\n\n')
