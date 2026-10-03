@@ -46,6 +46,12 @@
   - Les secrets `DEPLOY_*` sur le dépôt.
   - Le workflow GitHub Actions à ajouter.
 - Guide : `docs/SETUP-OPS.md`.
+- Politique d'exemple : lectures ops locales sans confirmation (`kubectl describe/logs/top/events`,
+  `docker ps/logs/images/stats`, `helm status/list/history`, `terraform validate`), et
+  `terraform plan` en N1. Restent exclues les commandes qui affichent des secrets (`kubectl get`,
+  `docker inspect`, `helm get`, `terraform show`).
+- « Regarde ça » : Jarvis regarde la fenêtre au premier plan. Consignes tech lead : notes de
+  version, rapport de la semaine, tri des issues à valider.
 
 ## 0.15.0 — Jarvis Island (03/10/2026)
 

@@ -47,6 +47,13 @@ shell:
     - { cmd: mv, level: 1 }
     - { cmd: open, level: 1, reason: opens an app or a file }
     - { cmd: code, level: 1, reason: opens VS Code }
+    # Ops, read-only. Left out on purpose because they print secrets: kubectl get (get secret -o yaml),
+    # docker inspect (environment), helm get (values), terraform show (state).
+    - { cmd: kubectl, sub: [describe, logs, top, events, version, api-resources], level: 0 }
+    - { cmd: docker, sub: [ps, logs, images, stats, version], level: 0 }
+    - { cmd: helm, sub: [status, list, history, version], level: 0 }
+    - { cmd: terraform, sub: [validate, version], level: 0 }
+    - { cmd: terraform, sub: [plan, fmt], level: 1, reason: plan reads the state and calls providers }
   # Extra N4 rules, e.g. { cmd: npm, sub: [publish], reason: never publish packages }
   deny:
     - { cmd: npm, sub: [publish], reason: never publish packages }
